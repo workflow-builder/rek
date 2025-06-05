@@ -20,6 +20,10 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import shlex
 import csv
+import threading
+import tkinter as tk
+from gui.rek_gui import RekGUI
+from rek_email_search import EmailSearcher  # Updated import
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -53,6 +57,7 @@ class SubdomainScanner:
             'my', 'user', 'account', 'profile', 'settings', 'signup', 'login', 'gateway', 'proxy', 'cdn', 'cache', 'backup',
             'devops', 'ci', 'cd', 'monitoring', 'analytics', 'payments', 'billing', 'support', 'chat', 'ws', 'wss'
         ]
+        self.email_searcher = EmailSearcher(timeout=timeout, silent=silent)
 
     def load_wordlist(self) -> List[str]:
         """Load wordlist from file or use enhanced default."""
@@ -108,7 +113,7 @@ class SubdomainScanner:
                 except requests.exceptions.RequestException as e:
                     if not self.silent and attempt == max_retries - 1:
                         logger.error(colored(f"DNS Dumpster request failed after {max_retries} attempts: {e}", "red"))
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2 ** attempt)
                 except Exception as e:
                     if not self.silent and attempt == max_retries - 1:
                         logger.error(colored(f"DNS Dumpster parsing error after {max_retries} attempts: {e}", "red"))
@@ -135,7 +140,7 @@ class SubdomainScanner:
                                 self.subdomains.add(line)
                     if not self.silent:
                         logger.info(colored(f"Fetched {len(self.subdomains)} subdomains from certificate transparency", "green"))
-                    time.sleep(1)  # Rate limiting
+                    time.sleep(1)
                     break
                 except requests.exceptions.Timeout:
                     if not self.silent and attempt == 2:
@@ -169,7 +174,7 @@ class SubdomainScanner:
                         self.validated_subdomains.add(target)
                         if not self.silent:
                             logger.info(colored(f"Validated subdomain: {target} ({rdata})", "green"))
-                    await asyncio.sleep(0.1)  # Rate limiting
+                    await asyncio.sleep(0.1)
                 except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.Timeout):
                     pass
                 except Exception as e:
@@ -179,10 +184,18 @@ class SubdomainScanner:
         tasks = [check_subdomain(subdomain) for subdomain in wordlist]
         await asyncio.gather(*tasks)
 
-    async def enumerate_subdomains(self, domain: str, output_file: str):
-        """Enumerate subdomains for the given domain."""
+    async def enumerate_subdomains(self, domain: str, output_file: str, github_token: str = None, max_commits: int = 50, skip_forks: bool = True):
+        """Enumerate subdomains and run email search in parallel."""
         if not self.silent:
             logger.info(colored(f"Starting subdomain enumeration for {domain}", "green"))
+
+        # Start email search in a separate thread
+        email_output = f"{os.path.splitext(output_file)[0]}_emails.csv" if output_file else "email_results.csv"
+        email_thread = threading.Thread(
+            target=self.email_searcher.run,
+            args=(domain, None, github_token, email_output, max_commits, skip_forks)
+        )
+        email_thread.start()
 
         # Step 1: DNS Dumpster
         self.dns_dumpster(domain)
@@ -192,7 +205,7 @@ class SubdomainScanner:
 
         # Step 3: Combine with default wordlist and save all subdomains to results.txt
         wordlist = self.load_wordlist()
-        combined_subdomains = set(self.subdomains)  # Start with subdomains from DNS Dumpster and crt.sh
+        combined_subdomains = set(self.subdomains)
         for sub in wordlist:
             combined_subdomains.add(f"{sub}.{domain}")
 
@@ -244,6 +257,11 @@ class SubdomainScanner:
             if not self.silent:
                 logger.error(colored(f"Error saving validated subdomains to {validated_output}: {e}", "red"))
             raise
+
+        # Wait for email search to complete
+        email_thread.join()
+        if not self.silent:
+            logger.info(colored("Completed email search in parallel", "green"))
 
 class HTTPStatusChecker:
     def __init__(self, timeout: int = 10, max_concurrent: int = 100, silent: bool = False):
@@ -853,6 +871,7 @@ class ReconTool:
         self.subdomain_scanner = SubdomainScanner(args.timeout, args.subdomain_wordlist, args.concurrency, args.retries, args.silent)
         self.http_checker = HTTPStatusChecker(args.timeout, args.concurrency, args.silent)
         self.dir_scanner = DirectoryScanner(args.timeout, args.concurrency, args.depth, args.silent)
+        self.email_searcher = EmailSearcher(args.timeout, args.silent)
         self.silent = args.silent
         self.default_input_file = "http_results.csv"
 
@@ -862,7 +881,7 @@ class ReconTool:
 **************************************
   RRR   EEEEE  K   K
   R  R  E      K  K
-  RRR   EEEE   KKK
+  BJP   EEEE   KKK
   R  R  E      K  K
   R   R EEEEE  K   K
 
@@ -880,8 +899,9 @@ class ReconTool:
         print(colored("REK Menu", "cyan", attrs=["bold"]))
         print(colored("1. Command Line", "green"))
         print(colored("2. Navigation", "green"))
-        print(colored("3. Exit", "red"))
-        return input(colored("Select an option (1-3): ", "yellow"))
+        print(colored("3. REK Email Search", "green"))
+        print(colored("4. Exit", "red"))
+        return input(colored("Select an option (1-4): ", "yellow"))
 
     def display_recon_menu(self, show_examples: bool = False):
         """Display the Recon Tool menu with colors."""
@@ -925,6 +945,35 @@ class ReconTool:
         print(colored("4. Exit", "red"))
         return input(colored("Select an option (1-4): ", "yellow"))
 
+    def display_email_menu(self, show_examples: bool = False):
+        """Display the Email Search menu with colors and emojis."""
+        print(colored("\n📧 Email Search Menu:", "cyan", attrs=["bold"]))
+        if show_examples:
+            print(
+                colored("1. ", "green") +
+                colored("Search by Domain", "light_green") + ": " +
+                colored("python3 rek-beta.py ", "green") +
+                colored("--email-domain", "cyan") + " xyz.com " +
+                colored("-o", "cyan") + " email_results.csv " +
+                colored("--token", "cyan") + " ghp_xxx " +
+                colored("--hibp-key", "cyan") + " hibp_xxx " +
+                colored("--limit-commits", "cyan") + " 50"
+            )
+            print(
+                colored("2. ", "green") +
+                colored("Search by Username or Organization", "light_green") + ": " +
+                colored("python3 rek-beta.py ", "green") +
+                colored("--org", "cyan") + " microsoft " +
+                colored("-o", "cyan") + " email_results.csv " +
+                colored("--token", "cyan") + " ghp_xxx " +
+                colored("--hibp-key", "cyan") + " hibp_xxx"
+            )
+        else:
+            print(colored("1. 🔍 Search by Domain", "green"))
+            print(colored("2. 🏢 Search by Username or Organization", "green"))
+        print(colored("3. 🚪 Exit", "red"))
+        return input(colored("Select an option (1-3): ", "yellow"))
+
     def prompt_subdomain_args(self):
         """Prompt for Subdomain Enumeration arguments."""
         print(colored("\nEnter arguments:", "cyan"))
@@ -937,6 +986,9 @@ class ReconTool:
         timeout = input(colored("-t/--timeout: Request timeout in seconds (default: 10): ", "yellow")).strip() or "10"
         concurrency = input(colored("-c/--concurrency: Maximum concurrent requests (default: 50): ", "yellow")).strip() or "50"
         retries = input(colored("-r/--retries: Number of retries for failed requests (default: 3): ", "yellow")).strip() or "3"
+        token = input(colored("--token: GitHub Personal Access Token (optional): ", "yellow")).strip() or None
+        max_commits = input(colored("--limit-commits: Max commits to scan per repo (default: 50): ", "yellow")).strip() or "50"
+        skip_forks = input(colored("--skip-forks: Skip forked repositories? (y/n, default: y): ", "yellow")).strip().lower() == 'y'
 
         class Args:
             pass
@@ -947,6 +999,9 @@ class ReconTool:
         args.timeout = int(timeout)
         args.concurrency = int(concurrency)
         args.retries = int(retries)
+        args.token = token
+        args.limit_commits = int(max_commits)
+        args.skip_forks = skip_forks
         args.silent = self.silent
         return args
 
@@ -992,8 +1047,42 @@ class ReconTool:
         args.silent = self.silent
         return args
 
+    def prompt_email_args(self, by_domain: bool = True):
+        """Prompt for Email Search arguments."""
+        print(colored("\nEnter arguments:", "cyan"))
+        if by_domain:
+            target = input(colored("--email-domain: Domain for email search (e.g., xyz.com): ", "yellow")).strip()
+        else:
+            target = input(colored("--email-username or --org: GitHub username or organization (e.g., exampleuser or exampleorg): ", "yellow")).strip()
+        output = input(colored("-o/--output: Output file (default: email_results.csv): ", "yellow")).strip() or "email_results.csv"
+        token = input(colored("--token: GitHub Personal Access Token (optional): ", "yellow")).strip() or None
+        hibp_key = input(colored("--hibp-key: HIBP API key (optional): ", "yellow")).strip() or None
+        limit_commits = input(colored("--limit-commits: Max commits to scan per repo (default: 50): ", "yellow")).strip() or "50"
+        skip_forks = input(colored("--skip-forks: Skip forked repositories? (y/n, default: y): ", "yellow")).strip().lower() == 'y'
+        timeout = input(colored("-t/--timeout: Request timeout in seconds (default: 10): ", "yellow")).strip() or "10"
+
+        class Args:
+            pass
+        args = Args()
+        if by_domain:
+            args.email_domain = target
+            args.email_username = None
+            args.org = None
+        else:
+            args.email_domain = None
+            args.email_username = target
+            args.org = target  # Treat as org if username is an org
+        args.output = output
+        args.token = token
+        args.hibp_key = hibp_key
+        args.limit_commits = int(limit_commits)
+        args.skip_forks = skip_forks
+        args.timeout = int(timeout)
+        args.silent = self.silent
+        return args
+
     def run_subdomain_scan(self, args=None):
-        """Run subdomain enumeration."""
+        """Run subdomain enumeration with optional email search."""
         if not args:
             args = self.args
         if not args.domain:
@@ -1001,9 +1090,28 @@ class ReconTool:
             return
         if not self.silent:
             print(colored(f"Running Subdomain Enumeration for {args.domain}...", "green"))
-        asyncio.run(self.subdomain_scanner.enumerate_subdomains(args.domain, args.output or "results.txt"))
+        asyncio.run(self.subdomain_scanner.enumerate_subdomains(
+            args.domain,
+            args.output or "results.txt",
+            args.token,
+            args.limit_commits,
+            args.skip_forks
+        ))
+        # Run email search if domain is provided
+        email_output = f"{os.path.splitext(args.output or 'results.txt')[0]}_emails.csv"
         if not self.silent:
-            print(colored("Finished Subdomain Enumeration.", "green"))
+            print(colored(f"Running Email Search for domain: {args.domain}...", "green"))
+        self.email_searcher.run(
+            domain=args.domain,
+            username=None,
+            token=args.token,
+            output_file=email_output,
+            max_commits=args.limit_commits,
+            skip_forks=args.skip_forks,
+            hibp_key=args.hibp_key
+        )
+        if not self.silent:
+            print(colored("Finished Subdomain Enumeration and Email Search.", "green"))
 
     def run_http_check(self, args=None):
         """Run HTTP status checking."""
@@ -1035,9 +1143,34 @@ class ReconTool:
             status_codes = None
         self.dir_scanner.run(args.input, status_codes, args.url, args.dir_wordlist)
 
+    def run_email_search(self, args=None):
+        """Run email search."""
+        if not args:
+            args = self.args
+        if not (args.email_domain or args.email_username or args.org):
+            print(colored("Error: Must provide either --email-domain, --email-username, or --org", "red"))
+            return
+        if not self.silent:
+            target = args.email_domain or args.email_username or args.org
+            target_type = "domain" if args.email_domain else "username" if args.email_username else "organization"
+            print(colored(f"Running Email Search for {target_type}: {target}...", "green"))
+        self.email_searcher.run(
+            domain=args.email_domain,
+            username=args.email_username or args.org,  # Use org as username if provided
+            token=args.token,
+            output_file=args.output,
+            max_commits=args.limit_commits,
+            skip_forks=args.skip_forks,
+            hibp_key=args.hibp_key
+        )
+        if not self.silent:
+            print(colored("Finished Email Search.", "green"))
+
     def identify_task(self):
         """Identify which task to run based on provided arguments."""
         args = self.args
+        if args.email_domain or args.email_username or args.org:
+            return "email"
         if args.domain:
             return "subdomain"
         if args.input and args.output and not args.status and not args.url:
@@ -1055,12 +1188,17 @@ class ReconTool:
         if not command.strip():
             parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")
             parser.add_argument('-d', '--domain', help="Domain for subdomain enumeration (e.g., xyz.com)")
-            parser.add_argument('-o', '--output', help="Output file for results (default: results.txt or http_results.csv)")
+            parser.add_argument('--email-domain', help="Domain for email search (e.g., xyz.com)")
+            parser.add_argument('--email-username', help="GitHub username for email search (e.g., exampleuser)")
+            parser.add_argument('-o', '--output', help="Output file for results (default: results.txt, http_results.csv, or email_results.csv)")
             parser.add_argument('--input', help="Input file with URLs for HTTP status or directory scanning")
             parser.add_argument('--status', help="Comma-separated status codes for directory scanning (e.g., 200,301)")
             parser.add_argument('--url', help="Single URL for directory scanning (e.g., https://xyz.com)")
             parser.add_argument('-w', '--subdomain-wordlist', help="Wordlist file for subdomain enumeration")
             parser.add_argument('--dir-wordlist', help="Wordlist file for directory scanning")
+            parser.add_argument('--token', help="GitHub Personal Access Token")
+            parser.add_argument('--limit-commits', type=int, default=50, help="Max commits to scan per repo")
+            parser.add_argument('--skip-forks', action='store_true', help="Skip forked repositories")
             parser.add_argument('-t', '--timeout', type=int, default=10, help="Request timeout in seconds")
             parser.add_argument('-c', '--concurrency', type=int, default=50, help="Maximum concurrent requests")
             parser.add_argument('-r', '--retries', type=int, default=3, help="Number of retries for failed requests")
@@ -1073,6 +1211,8 @@ class ReconTool:
                 args_list = ['--input', 'results.txt', '-o', 'http_results.csv']
             elif recon_choice == '3':
                 args_list = ['--input', 'http_results.csv', '--status', '200,301']
+            elif recon_choice == '4':
+                args_list = ['--email-domain', 'xyz.com', '-o', 'email_results.csv']
             else:
                 print(colored("Invalid recon choice for default command.", "red"))
                 return
@@ -1093,12 +1233,17 @@ class ReconTool:
 
                 parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")
                 parser.add_argument('-d', '--domain', help="Domain for subdomain enumeration (e.g., xyz.com)")
-                parser.add_argument('-o', '--output', help="Output file for results (default: results.txt or http_results.csv)")
+                parser.add_argument('--email-domain', help="Domain for email search (e.g., xyz.com)")
+                parser.add_argument('--email-username', help="GitHub username for email search (e.g., exampleuser)")
+                parser.add_argument('-o', '--output', help="Output file for results (default: results.txt, http_results.csv, or email_results.csv)")
                 parser.add_argument('--input', help="Input file with URLs for HTTP status or directory scanning")
                 parser.add_argument('--status', help="Comma-separated status codes for directory scanning (e.g., 200,301)")
                 parser.add_argument('--url', help="Single URL for directory scanning (e.g., https://xyz.com)")
                 parser.add_argument('-w', '--subdomain-wordlist', help="Wordlist file for subdomain enumeration")
                 parser.add_argument('--dir-wordlist', help="Wordlist file for directory scanning")
+                parser.add_argument('--token', help="GitHub Personal Access Token")
+                parser.add_argument('--limit-commits', type=int, default=50, help="Max commits to scan per repo")
+                parser.add_argument('--skip-forks', action='store_true', help="Skip forked repositories")
                 parser.add_argument('-t', '--timeout', type=int, default=10, help="Request timeout in seconds")
                 parser.add_argument('-c', '--concurrency', type=int, default=50, help="Maximum concurrent requests")
                 parser.add_argument('-r', '--retries', type=int, default=3, help="Number of retries for failed requests")
@@ -1120,8 +1265,11 @@ class ReconTool:
         self.subdomain_scanner = SubdomainScanner(args.timeout, args.subdomain_wordlist, args.concurrency, args.retries, args.silent)
         self.http_checker = HTTPStatusChecker(args.timeout, args.concurrency, args.silent)
         self.dir_scanner = DirectoryScanner(args.timeout, args.concurrency, args.depth, args.silent)
+        self.email_searcher = EmailSearcher(args.timeout, args.silent)
 
-        if args.domain:
+        if args.email_domain or args.email_username:
+            self.run_email_search(args)
+        elif args.domain:
             self.run_subdomain_scan(args)
         elif args.input and args.output and not args.status and not args.url:
             self.run_http_check(args)
@@ -1140,7 +1288,10 @@ class ReconTool:
             colored("-d", "cyan") + " xyz.com " +
             colored("-w", "cyan") + " subdomains.txt " +
             colored("-t", "cyan") + " 15 " +
-            colored("-c", "cyan") + " 100"
+            colored("-c", "cyan") + " 100 " +
+            colored("--token", "cyan") + " ghp_xxx " +
+            colored("--limit-commits", "cyan") + " 50 " +
+            colored("--skip-forks", "cyan") + " "
         )
         print(
             colored("  HTTP Status Checking: ", "light_green") +
@@ -1160,12 +1311,21 @@ class ReconTool:
             colored("-c", "cyan") + " 100 " +
             colored("--depth", "cyan") + " 5"
         )
+        print(
+            colored("  Email Search: ", "light_green") +
+            colored("python3 rek-beta.py ", "green") +
+            colored("--email-domain", "cyan") + " xyz.com " +
+            colored("-o", "cyan") + " email_results.csv " +
+            colored("--token", "cyan") + " ghp_xxx " +
+            colored("--limit-commits", "cyan") + " 50 " +
+            colored("--skip-forks", "cyan") + " "
+        )
 
     def run(self):
-        """Run the tool, bypassing the menu if valid arguments are provided."""
+        """Run the recon tool based on arguments or interactively."""
+        self.display_banner()
+
         if self.has_valid_args():
-            if not self.silent:
-                self.display_banner()
             task = self.identify_task()
             if task == "subdomain":
                 self.run_subdomain_scan()
@@ -1173,30 +1333,22 @@ class ReconTool:
                 self.run_http_check()
             elif task == "directory":
                 self.run_directory_scan()
+            elif task == "email":
+                self.run_email_search()
             return
 
-        self.display_banner()
         while True:
             choice = self.display_rek_menu()
             if choice == '1':
-                while True:
-                    recon_choice = self.display_recon_menu(show_examples=True)
-                    if recon_choice == '1':
-                        command = input(colored("\nEnter the command (e.g., python3 rek-beta.py -d example.com -o results.txt -t 30 -r 3): ", "yellow")).strip()
-                        self.parse_and_run_command(command, recon_choice)
-                    elif recon_choice == '2':
-                        command = input(colored("\nEnter the command (e.g., python3 rek-beta.py --input results.txt -o http_results.csv -t 15 -c 100, press Enter for default): ", "yellow")).strip()
-                        self.parse_and_run_command(command, recon_choice)
-                    elif recon_choice == '3':
-                        command = input(colored("\nEnter the command (e.g., python3 rek-beta.py --input http_results.csv --status 200,301 --dir-wordlist common.txt -t 15 -c 100 --depth 5): ", "yellow")).strip()
-                        self.parse_and_run_command(command, recon_choice)
-                    elif recon_choice == '4':
-                        break
-                    else:
-                        print(colored("Invalid option. Please select 1, 2, 3, or 4.", "red"))
+                command = input(colored("Enter the command (or press Enter for default): ", "yellow")).strip()
+                recon_choice = self.display_recon_menu(show_examples=True)
+                if recon_choice == '4':
+                    print(colored("Exiting Recon Tool Menu.", "red"))
+                    continue
+                self.parse_and_run_command(command, recon_choice)
             elif choice == '2':
                 while True:
-                    recon_choice = self.display_recon_menu(show_examples=False)
+                    recon_choice = self.display_recon_menu()
                     if recon_choice == '1':
                         args = self.prompt_subdomain_args()
                         self.run_subdomain_scan(args)
@@ -1207,48 +1359,67 @@ class ReconTool:
                         args = self.prompt_directory_args()
                         self.run_directory_scan(args)
                     elif recon_choice == '4':
+                        print(colored("Exiting Recon Tool Menu.", "red"))
                         break
                     else:
-                        print(colored("Invalid option. Please select 1, 2, 3, or 4.", "red"))
+                        print(colored("Invalid choice. Please select 1-4.", "red"))
             elif choice == '3':
-                print(colored("Exiting Recon Tool. Goodbye!", "cyan"))
+                while True:
+                    email_choice = self.display_email_menu(show_examples=True)
+                    if email_choice == '1':
+                        args = self.prompt_email_args(by_domain=True)
+                        self.run_email_search(args)
+                    elif email_choice == '2':
+                        args = self.prompt_email_args(by_domain=False)
+                        self.run_email_search(args)
+                    elif email_choice == '3':
+                        print(colored("Exiting Email Search Menu.", "red"))
+                        break
+                    else:
+                        print(colored("Invalid choice. Please select 1-3.", "red"))
+            elif choice == '4':
+                print(colored("Exiting REK. Stay ethical!", "red"))
                 break
             else:
-                print(colored("Invalid option. Please select 1, 2, or 3.", "red"))
+                print(colored("Invalid choice. Please select 1-4.", "red"))
 
 def main():
     parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")
+    parser.add_argument('--gui', action='store_true', help="Launch the GUI")
     parser.add_argument('-d', '--domain', help="Domain for subdomain enumeration (e.g., xyz.com)")
-    parser.add_argument('-o', '--output', help="Output file for results (default: results.txt or http_results.csv)")
+    parser.add_argument('--email-domain', help="Domain for email search (e.g., xyz.com)")
+    parser.add_argument('--email-username', help="GitHub username for email search (e.g., exampleuser)")
+    parser.add_argument('--org', help="GitHub organization for email search (e.g., exampleorg)")
+    parser.add_argument('-o', '--output', help="Output file for results (default: results.txt, http_results.csv, or email_results.csv)")
     parser.add_argument('--input', help="Input file with URLs for HTTP status or directory scanning")
     parser.add_argument('--status', help="Comma-separated status codes for directory scanning (e.g., 200,301)")
     parser.add_argument('--url', help="Single URL for directory scanning (e.g., https://xyz.com)")
     parser.add_argument('-w', '--subdomain-wordlist', help="Wordlist file for subdomain enumeration")
     parser.add_argument('--dir-wordlist', help="Wordlist file for directory scanning")
+    parser.add_argument('--token', help="GitHub Personal Access Token")
+    parser.add_argument('--hibp-key', help="HIBP API key for email breach checking")
+    parser.add_argument('--limit-commits', type=int, default=50, help="Max commits to scan per repo")
+    parser.add_argument('--skip-forks', action='store_true', help="Skip forked repositories")
     parser.add_argument('-t', '--timeout', type=int, default=10, help="Request timeout in seconds")
     parser.add_argument('-c', '--concurrency', type=int, default=50, help="Maximum concurrent requests")
     parser.add_argument('-r', '--retries', type=int, default=3, help="Number of retries for failed requests")
     parser.add_argument('--depth', type=int, default=5, help="Maximum crawling depth for directory scanning (1-10)")
     parser.add_argument('--silent', action='store_true', help="Run in silent mode (only show main status messages)")
-    parser.add_argument('--gui', action='store_true', help="Run the GUI interface")
+
     args = parser.parse_args()
 
     if args.gui:
-        try:
-            from gui.rek_gui import main as gui_main
-            gui_main()
-        except ImportError as e:
-            print(colored("Error: GUI dependencies not found. Ensure 'gui' folder and Tkinter are available.", "red"))
-            sys.exit(1)
-        return
-
-    if args.silent:
-        logging.basicConfig(level=logging.CRITICAL)
+        root = tk.Tk()
+        app = RekGUI(root)
+        root.mainloop()
     else:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        if args.silent:
+            logging.basicConfig(level=logging.CRITICAL)
+        else:
+            logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    recon_tool = ReconTool(args)
-    recon_tool.run()
+        recon_tool = ReconTool(args)
+        recon_tool.run()
 
 if __name__ == "__main__":
     main()
