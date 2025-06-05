@@ -1,0 +1,27 @@
+# Allow Python scripts
+!*.py
+# Allow wordlists
+!global_wordlist.txt
+!wordlists/
+!wordlists/*.txt
+# Explicitly ignore specific files and directories
+results/
+venv
+http_results.csv
+__pycache__/
+*.pyc
+*.log
+.env
+*.bak
+*.swp
+*.swo
+.DS_Store
+.vscode/
+.idea/
+*.iml
+*.md
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.gif

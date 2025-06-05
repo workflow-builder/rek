@@ -1,0 +1,11 @@
+requests
+httpx
+dnspython
+pandas
+beautifulsoup4
+termcolor
+Wappalyzer
+selenium
+urllib3
+colorama
+python-whois
