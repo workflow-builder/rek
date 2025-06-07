@@ -1,3 +1,6 @@
+import warnings
+from urllib3.exceptions import NotOpenSSLWarning
+warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 import dns.resolver
 import httpx
 import asyncio
@@ -21,8 +24,6 @@ from urllib3.util.retry import Retry
 import shlex
 import csv
 import threading
-import tkinter as tk
-from gui.rek_gui import RekGUI
 from rek_email_search import EmailSearcher  # Updated import
 
 # Configure logging
@@ -628,7 +629,7 @@ class DirectoryScanner:
                 elif 'php' in tech.lower():
                     wordlist.extend(['phpinfo.php', 'admin.php', 'config.php', 'info.php', 'install.php', 'setup.php'])
                 elif 'apache' in tech.lower():
-                    wordlist.extend(['server-status', 'server-info', '.htaccess', 'access.log'])
+                    wordlist.extend(['server-status', 'server-info', '.htaccess', 'access_log'])
                 elif 'nginx' in tech.lower():
                     wordlist.extend(['nginx_status', 'stub_status', 'error.log'])
                 elif 'django' in tech.lower():
@@ -887,7 +888,7 @@ class ReconTool:
 
   rek - Reconnaissance Tool
   Authored by: Jayresearcher, NarutoX
-  Bug Bounty Hunter © 2025 - For ethical hacking and security research only
+  Bug Bounty Hunter Â© 2025 - For ethical hacking and security research only
   By scanning this domain, you agree that you own or have permission to perform this scanning or research.
   Empowering Ethical Hackers
 **************************************
@@ -947,7 +948,7 @@ class ReconTool:
 
     def display_email_menu(self, show_examples: bool = False):
         """Display the Email Search menu with colors and emojis."""
-        print(colored("\n📧 Email Search Menu:", "cyan", attrs=["bold"]))
+        print(colored("\n🔍 Email Search Menu:", "cyan", attrs=["bold"]))
         if show_examples:
             print(
                 colored("1. ", "green") +
@@ -970,7 +971,7 @@ class ReconTool:
             )
         else:
             print(colored("1. 🔍 Search by Domain", "green"))
-            print(colored("2. 🏢 Search by Username or Organization", "green"))
+            print(colored("2. 🧑 Search by Username or Organization", "green"))
         print(colored("3. 🚪 Exit", "red"))
         return input(colored("Select an option (1-3): ", "yellow"))
 
@@ -1365,7 +1366,7 @@ class ReconTool:
                         print(colored("Invalid choice. Please select 1-4.", "red"))
             elif choice == '3':
                 while True:
-                    email_choice = self.display_email_menu(show_examples=True)
+                    email_choice = self.display_email_menu()
                     if email_choice == '1':
                         args = self.prompt_email_args(by_domain=True)
                         self.run_email_search(args)
@@ -1385,7 +1386,6 @@ class ReconTool:
 
 def main():
     parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")
-    parser.add_argument('--gui', action='store_true', help="Launch the GUI")
     parser.add_argument('-d', '--domain', help="Domain for subdomain enumeration (e.g., xyz.com)")
     parser.add_argument('--email-domain', help="Domain for email search (e.g., xyz.com)")
     parser.add_argument('--email-username', help="GitHub username for email search (e.g., exampleuser)")
@@ -1408,21 +1408,13 @@ def main():
 
     args = parser.parse_args()
 
-    if args.gui:
-        root = tk.Tk()
-        app = RekGUI(root)
-        root.mainloop()
+    if args.silent:
+        logging.basicConfig(level=logging.CRITICAL)
     else:
-        if args.silent:
-            logging.basicConfig(level=logging.CRITICAL)
-        else:
-            logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-        recon_tool = ReconTool(args)
-        recon_tool.run()
+    recon_tool = ReconTool(args)
+    recon_tool.run()
 
 if __name__ == "__main__":
     main()
-
-  
-    
