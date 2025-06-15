@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # ╔═════════════════════════════════════════════════════════════╗
@@ -30,7 +31,7 @@ TARGET_DOMAIN=""
 CONFIG_FILE="${CONFIG_PATH:-$WORKING_DIR/config.conf}"
 API_KEYS=()
 RESOLVERS_FILE="$WORKING_DIR/resolvers.txt"
-THREADS=100
+THREADS=250
 WORDLISTS_DIR="${WORDLISTS_DIR:-$WORKING_DIR/wordlists}"
 RESULTS_DIR=""
 export PATH="$TOOLS_DIR:$HOME/go/bin:$PATH"
@@ -75,9 +76,9 @@ install_go() {
     if [ "$(uname)" == "Darwin" ]; then
         brew install golang
     elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
-        wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
-        sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
-        rm go1.21.0.linux-amd64.tar.gz
+        wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+        sudo tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+        rm go1.22.3.linux-amd64.tar.gz
         echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.profile
         echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.profile
         source ~/.profile
@@ -99,7 +100,7 @@ install_tools() {
     fi
     
     if command_exists go; then
-        for tool in subfinder assetfinder findomain chaos httpx naabu gospider katana gau getjs cariddi goaltdns gotator puredns gf; do
+        for tool in subfinder assetfinder findomain chaos httpx naabu gospider katana gau getjs cariddi goaltdns gotator puredns gf ripgen; do
             if ! go_tool_exists "$tool"; then
                 echo -e "${YELLOW}[*] Installing $tool...${NC}"
                 case $tool in
@@ -126,6 +127,7 @@ install_tools() {
                     gotator) go install -v github.com/Josue87/gotator@latest ;;
                     puredns) go install -v github.com/d3mondev/puredns/v2@latest ;;
                     gf) go install -v github.com/tomnomnom/gf@latest ;;
+                    ripgen) go install -v github.com/hueristiq/ripgen@latest ;;
                 esac
             fi
         done
@@ -193,6 +195,7 @@ check_prerequisites() {
         "gotator"
         "puredns"
         "gf"
+        "ripgen"
     )
     
     for tool in "${tools[@]}"; do
@@ -249,7 +252,7 @@ load_config() {
         echo -e "${YELLOW}[?] Enter your GitLab API token (leave blank if you don't have one):${NC}"
         read -r GITLAB_API_TOKEN
         
-        echo -e "${YELLOW}[?] Default number of threads to use (default: 100):${NC}"
+        echo -e "${YELLOW}[?] Default number of threads to use (default: 250):${NC}"
         read -r input_threads
         
         if [ -n "$input_threads" ]; then
@@ -295,10 +298,10 @@ subdomain_enumeration() {
     cd "$RESULTS_DIR/subdomains"
     
     echo -e "${YELLOW}[*] Running subfinder...${NC}"
-    subfinder -d "$TARGET_DOMAIN" -all -recursive -silent -o subfinder.txt || echo -e "${RED}[!] subfinder failed${NC}"
+    subfinder -d "$TARGET_DOMAIN" -all -recursive -silent -o subPrecursive.txt || echo -e "${RED}[!] subfinder failed${NC}"
     
     echo -e "${YELLOW}[*] Running assetfinder...${NC}"
-    echo "$TARGET_DOMAIN" | assetfinder -subs-only | tee assetfinder.txt || echo -e "${RED}[!] assetfinder failed${NC}"
+    echo "$TARGET_DOMAIN" | assetfinder -subs-only | tee assetf.txt || echo -e "${RED}[!] assetfinder failed${NC}"
     
     echo -e "${YELLOW}[*] Running findomain...${NC}"
     findomain -t "$TARGET_DOMAIN" --quiet | tee findomain.txt || echo -e "${RED}[!] findomain failed${NC}"
@@ -312,14 +315,14 @@ subdomain_enumeration() {
     
     if [ -n "$GITHUB_API_TOKEN" ]; then
         echo -e "${YELLOW}[*] Running github-subdomains...${NC}"
-        github-subdomains -d "$TARGET_DOMAIN" -t "$GITHUB_API_TOKEN" -o github-subdomains.txt || echo -e "${RED}[!] github-subdomains failed${NC}"
+        github-subdomains -d "$TARGET_DOMAIN" -t "$GITHUB_API_TOKEN" > github-subs.txt || echo -e "${RED}[!] github-subdomains failed${NC}"
     else
         echo -e "${YELLOW}[!] GitHub API token not provided, skipping github-subdomains...${NC}"
     fi
     
     if [ -n "$GITLAB_API_TOKEN" ]; then
         echo -e "${YELLOW}[*] Running gitlab-subdomains...${NC}"
-        gitlab-subdomains -d "$TARGET_DOMAIN" -t "$GITLAB_API_TOKEN" -o gitlab-subdomains.txt || echo -e "${RED}[!] gitlab-subdomains failed${NC}"
+        gitlab-subdomains -d "$TARGET_DOMAIN" -t "$GITLAB_API_TOKEN" > gitlab-subs.txt || echo -e "${RED}[!] gitlab-subdomains failed${NC}"
     else
         echo -e "${YELLOW}[!] GitLab API token not provided, skipping gitlab-subdomains...${NC}"
     fi
@@ -337,27 +340,32 @@ subdomain_permutation() {
     cd "$RESULTS_DIR/subdomains"
     
     echo -e "${YELLOW}[*] Generating permutation wordlist...${NC}"
-    cat sorted-subdomains.txt | tr . '\n' | sort -u > perms.txt
-    cat sorted-subdomains.txt | sed 's/[.]/-/g' | awk -F '-' '{for(i=1;i<=NF;i++){print $i}}' | sort -u >> perms.txt
+    cat sorted-subdomains.txt | tr . '\n' | sort -n | uniq > perm
+    cat sorted-subdomains.txt | sed 's/[.]/-/g' | awk -F '-' '{for(i=1;i<=NF;i++){print $i}}' | sort -u >> perm
     
     echo -e "${YELLOW}[*] Running dnsgen...${NC}"
     cat sorted-subdomains.txt | dnsgen - > output-dnsgen.txt || echo -e "${RED}[!] dnsgen failed${NC}"
     
     echo -e "${YELLOW}[*] Running goaltdns...${NC}"
     if command_exists goaltdns; then
-        goaltdns -w perms.txt -l sorted-subdomains.txt -o output-goaltdns.txt || echo -e "${RED}[!] goaltdns failed${NC}"
+        goaltdns -w perm -l sorted-subdomains.txt -o output-goaltdns.txt || echo -e "${RED}[!] goaltdns failed${NC}"
     else
         echo -e "${RED}[!] goaltdns not found, skipping...${NC}"
     fi
     
     echo -e "${YELLOW}[*] Running gotator...${NC}"
     if command_exists gotator; then
-        gotator -sub sorted-subdomains.txt -perm perms.txt -depth 1 -numbers 1 > output-gotator.txt || echo -e "${RED}[!] gotator failed${NC}"
+        gotator -sub sorted-subdomains.txt -perm perm -depth 1 -numbers 1 > output-gotator.txt || echo -e "${RED}[!] gotator failed${NC}"
     else
         echo -e "${RED}[!] gotator not found, skipping...${NC}"
     fi
     
-    echo -e "${YELLOW}[*] Skipping ripgen due to package issues...${NC}"
+    echo -e "${YELLOW}[*] Running ripgen...${NC}"
+    if command_exists ripgen; then
+        cat sorted-subdomains.txt | ripgen > output-ripgen.txt || echo -e "${RED}[!] ripgen failed${NC}"
+    else
+        echo -e "${RED}[!] ripgen not found, skipping...${NC}"
+    fi
     
     echo -e "${YELLOW}[*] Merging permutation results...${NC}"
     cat output*.txt 2>/dev/null | sort -u > output.txt
@@ -367,19 +375,19 @@ subdomain_permutation() {
     
     echo -e "${YELLOW}[*] Resolving permutated subdomains...${NC}"
     if command_exists puredns; then
-        puredns resolve --resolvers "$RESOLVERS_FILE" --write subdomains-permutated.txt output.txt || echo -e "${RED}[!] puredns failed${NC}"
+        cat output.txt | puredns resolve --resolvers "$RESOLVERS_FILE" > subdomains-permutated.txt || echo -e "${RED}[!] puredns failed${NC}"
     else
         echo -e "${RED}[!] puredns not found, skipping resolution...${NC}"
     fi
     
     echo -e "${YELLOW}[*] Merging all subdomains...${NC}"
     if [ -f "subdomains-permutated.txt" ]; then
-        cat sorted-subdomains.txt subdomains-permutated.txt | sort -u | tee final-subdomains.txt
+        cat sorted-subdomains.txt subdomains-permutated.txt | sort -u | tee sorted-subs.txt
     else
-        cp sorted-subdomains.txt final-subdomains.txt
+        cp sorted-subdomains.txt sorted-subs.txt
     fi
     
-    total_subdomains=$(wc -l < final-subdomains.txt)
+    total_subdomains=$(wc -l < sorted-subs.txt)
     echo -e "${GREEN}[✓] Subdomain permutation completed. Found $total_subdomains total unique subdomains${NC}"
 }
 
@@ -389,7 +397,7 @@ identify_live_subdomains() {
     cd "$RESULTS_DIR/subdomains"
     
     echo -e "${YELLOW}[*] Running httpx to identify live subdomains...${NC}"
-    httpx -l final-subdomains.txt -threads "$THREADS" -o subs-alive.txt || echo -e "${RED}[!] httpx failed${NC}"
+    httpx -l sorted-subs.txt -threads 250 -o subs-alive.txt || echo -e "${RED}[!] httpx failed${NC}"
     
     echo -e "${YELLOW}[*] Fingerprinting live subdomains...${NC}"
     httpx -l subs-alive.txt -title -sc -td -server -fr -probe -location -o httpx-output.txt || echo -e "${RED}[!] httpx failed${NC}"
@@ -405,13 +413,13 @@ port_scanning() {
     
     echo -e "${YELLOW}[*] Running naabu for port scanning...${NC}"
     if [ "$(id -u)" -eq 0 ] || command -v sudo &> /dev/null; then
-        sudo naabu -c "$THREADS" -l subs-alive.txt -port 80,443,3000,5000,8080,8000,8081,8888,8443 -o subs-portscanned.txt || {
+        sudo naabu -c 250 -l subs-alive.txt -port 3000,5000,8080,8000,8081,8888,8069,8009,8001,8070,8088,8002,8060,8091,8086,8010,8050,8085,8089,8040,8020,8051,8087,8071,8011,8030,8061,8072,8100,8083,8073,8099,8092,8074,8043,8035,8055,8021,8093,8022,8075,8044,8062,8023,8094,8012,8033,8063,8045,7000,9000,7070,9001,7001,10000,9002,7002,9003,7003,10001,80,443,4443 -o subs-portscanned.txt || {
             echo -e "${YELLOW}[*] Falling back to connect scanning...${NC}"
-            naabu -c "$THREADS" -l subs-alive.txt -port 80,443,3000,5000,8080,8000,8081,8888,8443 -s connect -o subs-portscanned.txt || echo -e "${RED}[!] naabu failed${NC}"
+            naabu -c 250 -l subs-alive.txt -port 3000,5000,8080,8000,8081,8888,8069,8009,8001,8070,8088,8002,8060,8091,8086,8010,8050,8085,8089,8040,8020,8051,8087,8071,8011,8030,8061,8072,8100,8083,8073,8099,8092,8074,8043,8035,8055,8021,8093,8022,8075,8044,8062,8023,8094,8012,8033,8063,8045,7000,9000,7070,9001,7001,10000,9002,7002,9003,7003,10001,80,443,4443 -s connect -o subs-portscanned.txt || echo -e "${RED}[!] naabu failed${NC}"
         }
     else
         echo -e "${YELLOW}[*] Running naabu with connect scanning (no sudo)...${NC}"
-        naabu -c "$THREADS" -l subs-alive.txt -port 80,443,3000,5000,8080,8000,8081,8888,8443 -s connect -o subs-portscanned.txt || echo -e "${RED}[!] naabu failed${NC}"
+        naabu -c 250 -l subs-alive.txt -port 3000,5000,8080,8000,8081,8888,8069,8009,8001,8070,8088,8002,8060,8091,8086,8010,8050,8085,8089,8040,8020,8051,8087,8071,8011,8030,8061,8072,8100,8083,8073,8099,8092,8074,8043,8035,8055,8021,8093,8022,8075,8044,8062,8023,8094,8012,8033,8063,8045,7000,9000,7070,9001,7001,10000,9002,7002,9003,7003,10001,80,443,4443 -s connect -o subs-portscanned.txt || echo -e "${RED}[!] naabu failed${NC}"
     fi
     
     echo -e "${YELLOW}[*] Fingerprinting services on open ports...${NC}"
@@ -426,14 +434,14 @@ content_discovery() {
     cd "$RESULTS_DIR/endpoints"
     
     echo -e "${YELLOW}[*] Running gospider...${NC}"
-    gospider -S "$RESULTS_DIR/subdomains/subs-alive.txt" -a -r --js --sitemap --robots -d 30 -c 10 -o gospider-output || echo -e "${RED}[!] gospider failed${NC}"
+    gospider -S "$RESULTS_DIR/subdomains/subs-alive.txt" -a -r --js --sitemap --robots -d 30 -c 10 -t 20 -K 10 -q --blacklist ".(jpg|jpeg|gif|css|tif|tiff|png|ttf|woff|woff2|ico)" -o gospider-output || echo -e "${RED}[!] gospider failed${NC}"
     cat gospider-output/* > gospider-all.txt 2>/dev/null || echo -e "${RED}[!] gospider output aggregation failed${NC}"
     
     echo -e "${YELLOW}[*] Running katana...${NC}"
-    katana -list "$RESULTS_DIR/subdomains/subs-alive.txt" -kf url,form,js -jc -d 30 -c 50 -silent | tee katana-output.txt || echo -e "${RED}[!] katana failed${NC}"
+    katana -list "$RESULTS_DIR/subdomains/subs-alive.txt" -kf all -jc -d 30 -c 50 -silent | tee katana-output.txt -a || echo -e "${RED}[!] katana failed${NC}"
     
     echo -e "${YELLOW}[*] Running gau...${NC}"
-    cat "$RESULTS_DIR/subdomains/subs-alive.txt" | gau --threads 50 --blacklist jpg,jpeg,png,gif,svg,css | tee gau-output.txt || echo -e "${RED}[!] gau failed${NC}"
+    cat "$RESULTS_DIR/subdomains/subs-alive.txt" | gau --threads 50 --blacklist jpg,jpeg,png,gif,svg,css,ttf,woff,woff2,ico,tif,tiff,webp | tee gau-output.txt -a || echo -e "${RED}[!] gau failed${NC}"
     
     echo -e "${YELLOW}[*] Combining all spider results...${NC}"
     cat gospider-all.txt katana-output.txt gau-output.txt 2>/dev/null | sort -u > spider-output.txt
@@ -452,7 +460,7 @@ analyze_vulnerabilities() {
         vuln_types=("xss" "lfi" "ssrf" "sqli" "rce" "ssti" "idor")
         for vuln in "${vuln_types[@]}"; do
             if [ -f "$HOME/.gf/$vuln.json" ]; then
-                gf "$vuln" < "$RESULTS_DIR/endpoints/spider-output.txt" > "checkfor-$vuln.txt" || echo -e "${RED}[!] gf $vuln failed${NC}"
+                cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf "$vuln" > "checkfor-$vuln.txt" || echo -e "${RED}[!] gf $vuln failed${NC}"
             else
                 echo -e "${YELLOW}[!] GF pattern for $vuln not found, skipping...${NC}"
             fi
@@ -469,13 +477,9 @@ categorize_endpoints() {
     cd "$RESULTS_DIR/endpoints"
     
     echo -e "${YELLOW}[*] Extracting endpoints by file extension...${NC}"
-    grep -i -e '\.json$' spider-output.txt | tee json-endpoints.txt
-    grep -i -e '\.bak$' -e '\.backup$' -e '\.old$' -e '\.tmp$' spider-output.txt | tee backup-endpoints.txt
-    grep -i -e '\.conf$' -e '\.config$' -e '\.env$' -e '\.ini$' spider-output.txt | tee config-endpoints.txt
-    grep -i -e '\.pdf$' spider-output.txt | tee pdf-endpoints.txt
-    grep -i -e '\.xml$' spider-output.txt | tee xml-endpoints.txt
-    grep -i -e '\.sql$' spider-output.txt | tee sql-endpoints.txt
-    grep -i -e '\.log$' spider-output.txt | tee log-endpoints.txt
+    grep -i -e '\.json$' spider-output.txt | tee json-endpd
+    grep -i -e '\.bak$' spider-output.txt | tee bak-endpd
+    grep -i -e '\.pdf$' spider-output.txt | tee pdf-endpd
     
     echo -e "${GREEN}[✓] Endpoint categorization completed${NC}"
 }
@@ -495,7 +499,7 @@ js_analysis() {
     
     echo -e "${YELLOW}[*] Scanning JavaScript files for secrets...${NC}"
     if command_exists cariddi; then
-        cariddi -headers "User-Agent: Mozilla/5.0" -intensive -e -s < getjs-output.txt | tee js-secrets.txt || echo -e "${RED}[!] cariddi failed${NC}"
+        cariddi -headers "User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10/15_7) AppleWebKit/537.36(KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36" -intensive -e -s < getjs-output.txt | tee js-secrets.txt || echo -e "${RED}[!] cariddi failed${NC}"
     else
         echo -e "${RED}[!] cariddi not found. Skipping JavaScript secret analysis.${NC}"
     fi
@@ -515,8 +519,8 @@ generate_report() {
     
     echo "## Summary" >> "$REPORT_FILE"
     
-    if [ -f "$RESULTS_DIR/subdomains/final-subdomains.txt" ]; then
-        total_subdomains=$(wc -l < "$RESULTS_DIR/subdomains/final-subdomains.txt")
+    if [ -f "$RESULTS_DIR/subdomains/sorted-subs.txt" ]; then
+        total_subdomains=$(wc -l < "$RESULTS_DIR/subdomains/sorted-subs.txt")
         echo "- Total unique subdomains discovered: $total_subdomains" >> "$REPORT_FILE"
     fi
     
@@ -567,12 +571,12 @@ generate_report() {
         fi
     done
     
-    for ext in "json" "backup" "config" "pdf" "xml" "sql" "log"; do
-        if [ -f "$RESULTS_DIR/endpoints/$ext-endpoints.txt" ] && [ -s "$RESULTS_DIR/endpoints/$ext-endpoints.txt" ]; then
+    for ext in "json" "bak" "pdf"; do
+        if [ -f "$RESULTS_DIR/endpoints/$ext-endpd" ] && [ -s "$RESULTS_DIR/endpoints/$ext-endpd" ]; then
             echo "" >> "$REPORT_FILE"
             echo "### Interesting $ext files (sample)" >> "$REPORT_FILE"
             echo "```" >> "$REPORT_FILE"
-            head -5 "$RESULTS_DIR/endpoints/$ext-endpoints.txt" >> "$REPORT_FILE"
+            head -5 "$RESULTS_DIR/endpoints/$ext-endpd" >> "$REPORT_FILE"
             echo "```" >> "$REPORT_FILE"
         fi
     done
@@ -591,10 +595,6 @@ generate_report() {
 cleanup() {
     echo -e "\n${BLUE}[+] Cleaning up temporary files...${NC}"
     
-    if [ -f "$RESULTS_DIR/subdomains/all.txt" ]; then
-        rm "$RESULTS_DIR/subdomains/all.txt"
-    fi
-    
     if [ -f "$RESULTS_DIR/subdomains/output.txt" ]; then
         rm "$RESULTS_DIR/subdomains/output.txt"
     fi
@@ -611,7 +611,7 @@ display_help() {
     echo -e "  -h, --help                 Display this help message"
     echo -e "  -d, --domain DOMAIN        Specify target domain"
     echo -e "  -o, --output DIR           Specify output directory"
-    echo -e "  -t, --threads NUMBER       Specify number of threads (default: 100)"
+    echo -e "  -t, --threads NUMBER       Specify number of threads (default: 250)"
     echo -e "  -c, --config FILE          Specify config file"
     echo -e "  --chaos-key KEY            Specify Chaos API key"
     echo -e "  --github-token TOKEN       Specify GitHub API token"

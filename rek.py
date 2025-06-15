@@ -24,8 +24,10 @@ from urllib3.util.retry import Retry
 import shlex
 import csv
 import threading
-from rek_email_search import EmailSearcher  # Updated import
+from rek_email_search import EmailSearcher
 import subprocess
+import glob
+from tldextract import extract
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -973,7 +975,7 @@ class ReconTool:
             )
         else:
             print(colored("1. 📧 Search by Domain", "green"))
-            print(colored("2. 🧑 Search by Username or Organization", "green"))
+            print(colored("2. 👤 Search by Username or Organization", "green"))
         print(colored("3. 🚪 Exit", "red"))
         return input(colored("Select an option (1-3): ", "yellow"))
 
@@ -1074,7 +1076,7 @@ class ReconTool:
         else:
             args.email_domain = None
             args.email_username = target
-            args.org = target  # Treat as org if username is an org
+            args.org = target
         args.output = output
         args.token = token
         args.hibp_key = hibp_key
@@ -1084,110 +1086,74 @@ class ReconTool:
         args.silent = self.silent
         return args
 
-    def run_subdomain_scan(self, args=None):
-        """Run subdomain enumeration with optional email search."""
-        if not args:
-            args = self.args
-        if not args.domain:
-            print(colored("Error: Domain is required for subdomain enumeration (use -d/--domain)", "red"))
-            return
-        if not self.silent:
-            print(colored(f"Running Subdomain Enumeration for {args.domain}...", "green"))
-        asyncio.run(self.subdomain_scanner.enumerate_subdomains(
-            args.domain,
-            args.output or "results.txt",
-            args.token,
-            args.limit_commits,
-            args.skip_forks
-        ))
-        # Run email search if domain is provided
-        email_output = f"{os.path.splitext(args.output or 'results.txt')[0]}_emails.csv"
-        if not self.silent:
-            print(colored(f"Running Email Search for domain: {args.domain}...", "green"))
-        self.email_searcher.run(
-            domain=args.domain,
-            username=None,
-            token=args.token,
-            output_file=email_output,
-            max_commits=args.limit_commits,
-            skip_forks=args.skip_forks,
-            hibp_key=args.hibp_key
-        )
-        if not self.silent:
-            print(colored("Finished Subdomain Enumeration and Email Search.", "green"))
+    def list_playbooks(self):
+        """List available playbook scripts in the playbook directory."""
+        playbook_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "playbook")
+        playbook_files = glob.glob(os.path.join(playbook_dir, "rek-playbook*.sh"))
+        return sorted([os.path.basename(playbook) for playbook in playbook_files])
 
-    def run_http_check(self, args=None):
-        """Run HTTP status checking."""
-        if not args:
-            args = self.args
-        if not args.input:
-            print(colored("Error: Input file is required for HTTP status checking (use --input)", "red"))
-            return
-        self.http_checker.run(args.input, args.output or "http_results.csv")
+    def select_playbook(self):
+        """Prompt user to select a playbook version."""
+        playbooks = self.list_playbooks()
+        if not playbooks:
+            print(colored("[!] No playbook scripts found in the playbook directory", "red"))
+            return None
 
-    def run_directory_scan(self, args=None):
-        """Run directory scanning."""
-        if not args:
-            args = self.args
-        if args.status and not args.input:
-            args.input = self.default_input_file
-            if not self.silent:
-                print(colored(f"No input file specified. Using default: {args.input}", "yellow"))
-        if not (args.status or args.url):
-            print(colored("Error: Must provide either status codes with input file or a URL", "red"))
-            return
-        if args.status:
+        print(colored("\nAvailable Playbook Versions:", "cyan"))
+        for i, playbook in enumerate(playbooks, 1):
+            version = playbook.replace('rek-playbook', '').replace('.sh', '')
+            version = 'Original' if version == '' else f'v{version[2:]}'
+            print(colored(f"[{i}] {version} ({playbook})", "green"))
+
+        while True:
             try:
-                status_codes = [int(code.strip()) for code in args.status.split(',')]
+                choice = input(colored(f"\nSelect a playbook version (1-{len(playbooks)}): ", "yellow")).strip()
+                choice = int(choice)
+                if 1 <= choice <= len(playbooks):
+                    return playbooks[choice - 1]
+                else:
+                    print(colored(f"[!] Invalid choice. Please select a number between 1 and {len(playbooks)}", "red"))
             except ValueError:
-                print(colored("Error: --status must be comma-separated integers (e.g., 200,301)", "red"))
-                return
-        else:
-            status_codes = None
-        self.dir_scanner.run(args.input, status_codes, args.url, args.dir_wordlist)
-
-    def run_email_search(self, args=None):
-        """Run email search."""
-        if not args:
-            args = self.args
-        if not (args.email_domain or args.email_username or args.org):
-            print(colored("Error: Must provide either --email-domain, --email-username, or --org", "red"))
-            return
-        if not self.silent:
-            target = args.email_domain or args.email_username or args.org
-            target_type = "domain" if args.email_domain else "username" if args.email_username else "organization"
-            print(colored(f"Running Email Search for {target_type}: {target}...", "green"))
-        self.email_searcher.run(
-            domain=args.email_domain,
-            username=args.email_username or args.org,  # Use org as username if provided
-            token=args.token,
-            output_file=args.output,
-            max_commits=args.limit_commits,
-            skip_forks=args.skip_forks,
-            hibp_key=args.hibp_key
-        )
-        if not self.silent:
-            print(colored("Finished Email Search.", "green"))
+                print(colored("[!] Invalid input. Please enter a number.", "red"))
 
     def run_playbook(self):
-        """Execute the recon playbook scripts with real-time log streaming and dynamic paths."""
-        print(colored("[*] Executing recon playbook...", "blue"))
-        
+        """Execute the selected recon playbook script with real-time log streaming."""
+        print(colored("[*] Preparing to run recon playbook...", "blue"))
 
-        # Determine the recon-toolkit directory dynamically
-        script_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of rek.py
-        # recon_toolkit_dir = os.path.dirname(script_dir)  # Assume recon-toolkit is parent
+        # Select playbook
+        playbook_script = self.select_playbook()
+        if not playbook_script:
+            return
+
+        # Prompt for domain and threads
+        domain = input(colored("[?] Enter the target domain (e.g., example.com): ", "yellow")).strip()
+        if not domain:
+            print(colored("[!] No domain provided", "red"))
+            return
+
+        _, _, extracted_domain = extract(domain)
+        if not extracted_domain:
+            print(colored("[!] Invalid domain format", "red"))
+            return
+
+        threads = input(colored("[?] Enter number of threads (default: 100, press Enter to skip): ", "yellow")).strip() or "100"
+        try:
+            threads = int(threads)
+            if threads <= 0:
+                raise ValueError
+        except ValueError:
+            print(colored("[!] Invalid thread count. Using default: 100", "yellow"))
+            threads = 100
+
+        # Determine paths
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         playbook_dir = os.path.join(script_dir, "playbook")
-        install_script = os.path.join(playbook_dir, "install-script.sh")
-        playbook_script = os.path.join(playbook_dir, "rek-playbook.sh")
-        # tools_dir = os.path.join(recon_toolkit_dir, "tools")
-        # config_path = os.path.join(recon_toolkit_dir, "config.conf")
-        # wordlists_dir = os.path.join(recon_toolkit_dir, "wordlists")
+        playbook_path = os.path.join(playbook_dir, playbook_script)
+        install_script = os.path.join(playbook_dir, f"install-script{playbook_script.replace('rek-playbook', '')}")
         tools_dir = os.path.join(script_dir, "tools")
         config_path = os.path.join(script_dir, "config.conf")
         wordlists_dir = os.path.join(script_dir, "wordlists")
-        recon_toolkit_dir = script_dir  # Use the directory of rek.py as the toolkit directory
-
+        recon_toolkit_dir = script_dir
 
         # Check if playbook directory and scripts exist
         if not os.path.isdir(playbook_dir):
@@ -1196,35 +1162,36 @@ class ReconTool:
         if not os.path.isfile(install_script):
             print(colored(f"[!] Error: {install_script} not found.", "red"))
             return
-        if not os.path.isfile(playbook_script):
-            print(colored(f"[!] Error: {playbook_script} not found.", "red"))
+        if not os.path.isfile(playbook_path):
+            print(colored(f"[!] Error: {playbook_path} not found.", "red"))
             return
 
         # Make scripts executable
         try:
             subprocess.run(["chmod", "+x", install_script], check=True, capture_output=True)
-            subprocess.run(["chmod", "+x", playbook_script], check=True, capture_output=True)
+            subprocess.run(["chmod", "+x", playbook_path], check=True, capture_output=True)
         except subprocess.CalledProcessError as e:
             print(colored(f"[!] Error making scripts executable: {e.stderr.decode()}", "red"))
             return
 
         # Set up environment variables
         env = os.environ.copy()
-        # Add tools directory and Go binary paths to PATH
         go_bin = os.path.expanduser("~/go/bin")
-        env["PATH"] = f"{os.path.join(script_dir, 'tools')}:{go_bin}:{env.get('PATH', '')}"
-        # Set dynamic paths
-        env["RECON_TOOLKIT_DIR"] = script_dir
+        env["PATH"] = f"{tools_dir}:{go_bin}:{env.get('PATH', '')}"
+        env["RECON_TOOLKIT_DIR"] = recon_toolkit_dir
         env["TOOLS_DIR"] = tools_dir
         env["CONFIG_PATH"] = config_path
         env["WORDLISTS_DIR"] = wordlists_dir
 
-        def stream_script(script_path, script_name):
+        def stream_script(script_path, script_name, args=None):
             """Run a script and stream its output in real-time with combined stdout/stderr."""
             print(colored(f"[*] Running {script_name}...", "yellow"))
+            cmd = [script_path]
+            if args:
+                cmd.extend(args)
             try:
                 process = subprocess.Popen(
-                    [script_path],
+                    cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
@@ -1233,6 +1200,7 @@ class ReconTool:
                     cwd=recon_toolkit_dir
                 )
                 error_patterns = re.compile(r'^(Warning|Error|fatal|ERROR|WARNING):', re.IGNORECASE)
+                start_time = time.time()
                 while process.poll() is None:
                     line = process.stdout.readline()
                     if line:
@@ -1248,19 +1216,20 @@ class ReconTool:
                         else:
                             print(line.rstrip())
                 if process.returncode == 0:
-                    print(colored(f"[✔] {script_name} completed successfully.", "green"))
+                    duration = time.time() - start_time
+                    print(colored(f"[✓] {script_name} completed successfully in {duration:.2f} seconds.", "green"))
                 else:
                     print(colored(f"[!] Error running {script_name}: Non-zero exit code {process.returncode}", "red"))
             except Exception as e:
                 print(colored(f"[!] Error running {script_name}: {str(e)}", "red"))
 
-        # Execute install-script.sh
-        stream_script(install_script, "install-script.sh")
+        # Execute install script
+        stream_script(install_script, os.path.basename(install_script))
 
-        # Execute rek-playbook.sh
-        stream_script(playbook_script, "rek-playbook.sh")
+        # Execute playbook script with domain and threads
+        stream_script(playbook_path, playbook_script, ["-d", domain, "-t", str(threads)])
 
-        print(colored("[✔] Recon playbook execution completed.", "green"))
+        print(colored("[✓] Recon playbook execution completed.", "green"))
 
     def identify_task(self):
         """Identify which task to run based on provided arguments."""
@@ -1417,6 +1386,92 @@ class ReconTool:
             colored("--skip-forks", "cyan") + " "
         )
 
+    def run_subdomain_scan(self, args=None):
+        """Run subdomain enumeration with optional email search."""
+        if not args:
+            args = self.args
+        if not args.domain:
+            print(colored("Error: Domain is required for subdomain enumeration (use -d/--domain)", "red"))
+            return
+        if not self.silent:
+            print(colored(f"Running Subdomain Enumeration for {args.domain}...", "green"))
+        asyncio.run(self.subdomain_scanner.enumerate_subdomains(
+            args.domain,
+            args.output or "results.txt",
+            args.token,
+            args.limit_commits,
+            args.skip_forks
+        ))
+        # Run email search if domain is provided
+        email_output = f"{os.path.splitext(args.output or 'results.txt')[0]}_emails.csv"
+        if not self.silent:
+            print(colored(f"Running Email Search for domain: {args.domain}...", "green"))
+        self.email_searcher.run(
+            domain=args.domain,
+            username=None,
+            token=args.token,
+            output_file=email_output,
+            max_commits=args.limit_commits,
+            skip_forks=args.skip_forks,
+            hibp_key=args.hibp_key
+        )
+        if not self.silent:
+            print(colored("Finished Subdomain Enumeration and Email Search.", "green"))
+
+    def run_http_check(self, args=None):
+        """Run HTTP status checking."""
+        if not args:
+            args = self.args
+        if not args.input:
+            print(colored("Error: Input file is required for HTTP status checking (use --input)", "red"))
+            return
+        self.http_checker.run(args.input, args.output or "http_results.csv")
+
+    def run_directory_scan(self, args=None):
+        """Run directory scanning."""
+        if not args:
+            args = self.args
+        if args.status and not args.input:
+            args.input = self.default_input_file
+            if not self.silent:
+                print(colored(f"No input file specified. Using default: {args.input}", "yellow"))
+        if not (args.status or args.url):
+            print(colored("Error: Must provide either status codes with input file or a URL", "red"))
+            return
+        if args.status:
+            try:
+                status_codes = [int(code.strip()) for code in args.status.split(',')]
+            except ValueError:
+                print(colored("Error: --status must be comma-separated integers (e.g., 200,301)", "red"))
+                return
+        else:
+            status_codes = None
+        self.dir_scanner.run(args.input, status_codes, args.url, args.dir_wordlist)
+
+    def run_email_search(self, args=None):
+        """Run email search."""
+        if not args:
+            args = self.args
+        if not (args.email_domain or args.email_username or args.org):
+            print(colored("Error: Must provide either --email-domain, --email-username, or --org", "red"))
+            return
+        if not self.silent:
+            target = args.email_domain or args.email_username or args.org
+            target_type = "domain" if args.email_domain else "username" if args.email_username else "organization"
+            print(colored(f"Running Email Search for {target_type}: {target}...", "green"))
+        self.email_searcher.run(
+            domain=args.email_domain,
+            username=args.email_username,
+            org=args.org,
+            token=args.token,
+            output_file=args.output or "email_results.csv",
+            max_commits=args.limit_commits,
+            skip_forks=args.skip_forks,
+            hibp_key=args.hibp_key
+        )
+        if not self.silent:
+            print(colored("Finished Email Search.", "green"))
+
     def run(self):
         """Run the recon tool based on arguments or interactively."""
         self.display_banner()
@@ -1438,15 +1493,11 @@ class ReconTool:
             if choice == '1':
                 self.run_playbook()
             elif choice == '2':
-                command = input(colored("Enter the command (or press Enter for default): ", "yellow")).strip()
-                recon_choice = self.display_recon_menu(show_examples=True)
-                if recon_choice == '4':
-                    print(colored("Exiting Recon Tool Menu.", "red"))
-                    continue
-                self.parse_and_run_command(command, recon_choice)
+                command = input(colored("Enter command (e.g., python3 rek-beta.py -d xyz.com -o results.txt): ", "yellow")).strip()
+                self.parse_and_run_command(command, choice)
             elif choice == '3':
                 while True:
-                    recon_choice = self.display_recon_menu()
+                    recon_choice = self.display_recon_menu(show_examples=True)
                     if recon_choice == '1':
                         args = self.prompt_subdomain_args()
                         self.run_subdomain_scan(args)
@@ -1457,13 +1508,12 @@ class ReconTool:
                         args = self.prompt_directory_args()
                         self.run_directory_scan(args)
                     elif recon_choice == '4':
-                        print(colored("Exiting Recon Tool Menu.", "red"))
                         break
                     else:
-                        print(colored("Invalid choice. Please select 1-4.", "red"))
+                        print(colored("Invalid option. Please select 1-4.", "red"))
             elif choice == '4':
                 while True:
-                    email_choice = self.display_email_menu()
+                    email_choice = self.display_email_menu(show_examples=True)
                     if email_choice == '1':
                         args = self.prompt_email_args(by_domain=True)
                         self.run_email_search(args)
@@ -1471,15 +1521,14 @@ class ReconTool:
                         args = self.prompt_email_args(by_domain=False)
                         self.run_email_search(args)
                     elif email_choice == '3':
-                        print(colored("Exiting Email Search Menu.", "red"))
                         break
                     else:
-                        print(colored("Invalid choice. Please select 1-3.", "red"))
+                        print(colored("Invalid option. Please select 1-3.", "red"))
             elif choice == '5':
-                print(colored("Exiting REK. Stay ethical!", "red"))
+                print(colored("Exiting REK. Stay ethical!", "cyan"))
                 break
             else:
-                print(colored("Invalid choice. Please select 1-5.", "red"))
+                print(colored("Invalid option. Please select 1-5.", "red"))
 
 def main():
     parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")

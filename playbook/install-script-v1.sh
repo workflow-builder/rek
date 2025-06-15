@@ -112,17 +112,17 @@ install_go() {
                 brew install golang
                 ;;
             debian)
-                wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
-                sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
-                rm go1.21.0.linux-amd64.tar.gz
+                wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+                sudo tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+                rm go1.22.3.linux-amd64.tar.gz
                 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.profile
                 echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.profile
                 source ~/.profile
                 ;;
             rhel)
-                wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
-                sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
-                rm go1.21.0.linux-amd64.tar.gz
+                wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+                sudo tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+                rm go1.22.3.linux-amd64.tar.gz
                 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
                 echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
                 source ~/.bashrc
@@ -131,9 +131,9 @@ install_go() {
                 sudo pacman -S --noconfirm go
                 ;;
             *)
-                wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
-                sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
-                rm go1.21.0.linux-amd64.tar.gz
+                wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+                sudo tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+                rm go1.22.3.linux-amd64.tar.gz
                 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
                 echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
                 source ~/.bashrc
@@ -180,7 +180,7 @@ install_python_tools() {
     fi
     
     pip3 install --upgrade pip
-    pip3 install -r "$WORKING_DIR/requirements.txt"
+    pip3 install requests dnsgen tldextract dnspython
     
     echo -e "${GREEN}[✓] Python tools installed${NC}"
 }
@@ -211,6 +211,7 @@ install_go_tools() {
         "gotator:github.com/Josue87/gotator@latest"
         "puredns:github.com/d3mondev/puredns/v2@latest"
         "gf:github.com/tomnomnom/gf@latest"
+        "ripgen:github.com/hueristiq/ripgen@latest"
     )
     
     for tool_entry in "${tools[@]}"; do
@@ -401,6 +402,7 @@ verify_installation() {
         "gotator"
         "puredns"
         "gf"
+        "ripgen"
     )
     
     printf "%-20s %-10s\n" "Tool" "Status"
