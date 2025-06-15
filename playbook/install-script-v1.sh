@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ╔═════════════════════════════════════════════════════════════╗
-# ║  Recon Toolkit Installation Script                          ║
+# ║  Recon Toolkit Installation Script (v1)                     ║
 # ║  Automates the installation of all prerequisites for the    ║
-# ║  Modern Recon Playbook                                      ║
+# ║  Modern Recon Playbook (v1)                                ║
 # ╚═════════════════════════════════════════════════════════════╝
 
 # Terminal colors
@@ -17,13 +17,12 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}"
 echo "╔═══════════════════════════════════════════════════════════════════════════╗"
 echo "║                                                                           ║"
-echo "║        Recon Toolkit Installer - Setup your bug bounty environment        ║"
+echo "║        Recon Toolkit Installer (v1) - Setup your bug bounty environment   ║"
 echo "║                                                                           ║"
 echo "╚═══════════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
 # Variables
-# Use environment variable or dynamically determine WORKING_DIR
 WORKING_DIR="${RECON_TOOLKIT_DIR:-$(dirname "$(realpath "$0")")}"
 TOOLS_DIR="${TOOLS_DIR:-$WORKING_DIR/tools}"
 WORDLISTS_DIR="${WORDLISTS_DIR:-$WORKING_DIR/wordlists}"
@@ -145,7 +144,6 @@ install_go() {
         echo -e "${YELLOW}[!] You may need to restart your terminal or run: source ~/.bashrc (or ~/.profile)${NC}"
     fi
     
-    # Setup Go environment variables if not set
     if [ -z "$GOPATH" ]; then
         echo 'export GOPATH=$HOME/go' >> ~/.bashrc
         echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.bashrc
@@ -154,7 +152,6 @@ install_go() {
         echo -e "${YELLOW}[*] Go environment variables set. You may need to restart your terminal${NC}"
     fi
     
-    # Create go directory structure
     mkdir -p $HOME/go/{bin,pkg,src}
 }
 
@@ -162,7 +159,6 @@ install_go() {
 install_python_tools() {
     echo -e "${BLUE}[+] Installing Python tools and dependencies...${NC}"
     
-    # Ensure pip is available
     if ! command -v pip3 &> /dev/null; then
         case $OS in
             macos)
@@ -183,9 +179,8 @@ install_python_tools() {
         esac
     fi
     
-    # Install Python packages
     pip3 install --upgrade pip
-    pip3 install requests dnsgen tldextract dnspython
+    pip3 install -r "$WORKING_DIR/requirements.txt"
     
     echo -e "${GREEN}[✓] Python tools installed${NC}"
 }
@@ -194,60 +189,35 @@ install_python_tools() {
 install_go_tools() {
     echo -e "${BLUE}[+] Installing Go tools...${NC}"
     
-    # Make sure go is installed
     if ! command -v go &> /dev/null; then
         echo -e "${RED}[!] Go is not installed. Please install Go first${NC}"
         return 1
     fi
     
-    # Set PATH for Go binaries
     export PATH=$PATH:$HOME/go/bin:$TOOLS_DIR
     
-    # Install tools
-    echo -e "${YELLOW}[*] Installing subfinder...${NC}"
-    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+    local tools=(
+        "subfinder:github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
+        "assetfinder:github.com/tomnomnom/assetfinder@latest"
+        "httpx:github.com/projectdiscovery/httpx/cmd/httpx@latest"
+        "naabu:github.com/projectdiscovery/naabu/v2/cmd/naabu@latest"
+        "chaos:github.com/projectdiscovery/chaos-client/cmd/chaos@latest"
+        "gospider:github.com/jaeles-project/gospider@latest"
+        "katana:github.com/projectdiscovery/katana/cmd/katana@latest"
+        "gau:github.com/lc/gau/v2/cmd/gau@latest"
+        "getjs:github.com/003random/getJS@latest"
+        "cariddi:github.com/edoardottt/cariddi/cmd/cariddi@latest"
+        "goaltdns:github.com/subfinder/goaltdns@latest"
+        "gotator:github.com/Josue87/gotator@latest"
+        "puredns:github.com/d3mondev/puredns/v2@latest"
+        "gf:github.com/tomnomnom/gf@latest"
+    )
     
-    echo -e "${YELLOW}[*] Installing assetfinder...${NC}"
-    go install -v github.com/tomnomnom/assetfinder@latest
-    
-    echo -e "${YELLOW}[*] Installing httpx...${NC}"
-    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-    
-    echo -e "${YELLOW}[*] Installing naabu...${NC}"
-    go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-    
-    echo -e "${YELLOW}[*] Installing chaos client...${NC}"
-    go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
-    
-    echo -e "${YELLOW}[*] Installing gospider...${NC}"
-    go install -v github.com/jaeles-project/gospider@latest
-    
-    echo -e "${YELLOW}[*] Installing katana...${NC}"
-    go install -v github.com/projectdiscovery/katana/cmd/katana@latest
-    
-    echo -e "${YELLOW}[*] Installing gau...${NC}"
-    go install -v github.com/lc/gau/v2/cmd/gau@latest
-    
-    echo -e "${YELLOW}[*] Installing getJS...${NC}"
-    go install -v github.com/003random/getJS@latest
-    
-    echo -e "${YELLOW}[*] Installing cariddi...${NC}"
-    go install -v github.com/edoardottt/cariddi/cmd/cariddi@latest
-    
-    echo -e "${YELLOW}[*] Installing goaltdns...${NC}"
-    go install -v github.com/subfinder/goaltdns@latest
-    
-    echo -e "${YELLOW}[*] Installing gotator...${NC}"
-    go install -v github.com/Josue87/gotator@latest
-    
-    echo -e "${YELLOW}[*] Skipping ripgen due to package issues...${NC}"
-    # go install -v github.com/resyncgg/ripgen/cmd/ripgen@latest
-    
-    echo -e "${YELLOW}[*] Installing puredns...${NC}"
-    go install -v github.com/d3mondev/puredns/v2@latest
-    
-    echo -e "${YELLOW}[*] Installing gf...${NC}"
-    go install -v github.com/tomnomnom/gf@latest
+    for tool_entry in "${tools[@]}"; do
+        IFS=':' read -r tool repo <<< "$tool_entry"
+        echo -e "${YELLOW}[*] Installing $tool...${NC}"
+        go install -v "$repo" || echo -e "${RED}[!] Failed to install $tool${NC}"
+    done
     
     echo -e "${GREEN}[✓] Go tools installed successfully${NC}"
 }
@@ -277,13 +247,11 @@ install_findomain() {
 install_gf_patterns() {
     echo -e "${BLUE}[+] Installing GF patterns...${NC}"
     
-    # Check if gf is installed
     if ! command -v gf &> /dev/null; then
         echo -e "${YELLOW}[!] GF not found. Installing...${NC}"
         go install -v github.com/tomnomnom/gf@latest
     fi
     
-    # Clone GF patterns repositories
     echo -e "${YELLOW}[*] Downloading GF patterns...${NC}"
     if [ -d "$GF_PATTERNS_DIR/Gf-Patterns" ]; then
         echo -e "${YELLOW}[!] $GF_PATTERNS_DIR/Gf-Patterns already exists. Updating...${NC}"
@@ -293,12 +261,10 @@ install_gf_patterns() {
         git clone https://github.com/1ndianl33t/Gf-Patterns "$GF_PATTERNS_DIR/Gf-Patterns"
     fi
     
-    # Copy pattern files to .gf directory
     if [ -d "$GF_PATTERNS_DIR/Gf-Patterns" ]; then
         cp "$GF_PATTERNS_DIR/Gf-Patterns"/*.json "$GF_PATTERNS_DIR/"
     fi
     
-    # Clone and install additional patterns
     if [ -d "$TOOLS_DIR/gf-secrets" ]; then
         echo -e "${YELLOW}[!] $TOOLS_DIR/gf-secrets already exists. Updating...${NC}"
         git -C "$TOOLS_DIR/gf-secrets" pull
@@ -316,7 +282,6 @@ install_gf_patterns() {
 install_code_platform_tools() {
     echo -e "${BLUE}[+] Installing GitHub and GitLab subdomain tools...${NC}"
     
-    # Install github-subdomains
     echo -e "${YELLOW}[*] Installing github-subdomains...${NC}"
     if ! command -v github-subdomains &> /dev/null; then
         if [ -d "$TOOLS_DIR/github-subdomains" ]; then
@@ -331,7 +296,6 @@ install_code_platform_tools() {
         cd - > /dev/null
     fi
     
-    # Install gitlab-subdomains
     echo -e "${YELLOW}[*] Installing gitlab-subdomains...${NC}"
     if ! command -v gitlab-subdomains &> /dev/null; then
         if [ -d "$TOOLS_DIR/gitlab-subdomains" ]; then
@@ -354,84 +318,63 @@ download_resolvers() {
     echo -e "${BLUE}[+] Downloading DNS resolvers...${NC}"
     
     curl -s https://raw.githubusercontent.com/blechschmidt/massdns/master/lists/resolvers.txt -o "$RESOLVERS_FILE"
-    echo -e "${GREEN}[✓] Resolvers downloaded to $RESOLVERS_FILE${NC}"
-    
-    curl -s https://raw.githubusercontent.com/trickest/resolvers/main/resolvers-trusted.txt -o "$WORKING_DIR/resolvers-trusted.txt"
-    echo -e "${GREEN}[✓] Trusted resolvers downloaded to $WORKING_DIR/resolvers-trusted.txt${NC}"
+    if [ -s "$RESOLVERS_FILE" ]; then
+        echo -e "${GREEN}[✓] DNS resolvers downloaded${NC}"
+    else
+        echo -e "${RED}[!] Failed to download resolvers${NC}"
+    fi
 }
 
-# Function to download useful wordlists
+# Function to download wordlists
 download_wordlists() {
     echo -e "${BLUE}[+] Downloading wordlists...${NC}"
     
-    mkdir -p "$WORDLISTS_DIR"
+    if [ ! -f "$WORDLISTS_DIR/dns_names.txt" ]; then
+        echo -e "${YELLOW}[*] Downloading dns_names.txt...${NC}"
+        curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/dns_names.txt -o "$WORDLISTS_DIR/dns_names.txt"
+    fi
     
-    echo -e "${YELLOW}[*] Downloading subdomain wordlists...${NC}"
-    curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-5000.txt -o "$WORDLISTS_DIR/subdomains-top5000.txt"
-    curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/deepmagic.com-prefixes-top50000.txt -o "$WORDLISTS_DIR/prefixes-top50000.txt"
+    if [ ! -f "$WORDLISTS_DIR/subdomains-top1million-5000.txt" ]; then
+        echo -e "${YELLOW}[*] Downloading subdomains-top1million-5000.txt...${NC}"
+        curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-5000.txt -o "$WORDLISTS_DIR/subdomains-top1million-5000.txt"
+    fi
     
-    echo -e "${YELLOW}[*] Downloading content discovery wordlists...${NC}"
-    curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt -o "$WORDLISTS_DIR/common-paths.txt"
-    curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/api-endpoints.txt -o "$WORDLISTS_DIR/api-endpoints.txt"
+    if [ ! -f "$WORDLISTS_DIR/raft-medium-directories.txt" ]; then
+        echo -e "${YELLOW}[*] Downloading raft-medium-directories.txt...${NC}"
+        curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt -o "$WORDLISTS_DIR/raft-medium-directories.txt"
+    fi
     
-    echo -e "${GREEN}[✓] Wordlists downloaded to $WORDLISTS_DIR${NC}"
+    echo -e "${GREEN}[✓] Wordlists downloaded${NC}"
 }
 
-# Function to setup configuration file
-setup_config() {
-    echo -e "${BLUE}[+] Setting up configuration file...${NC}"
+# Function to create configuration file
+create_config() {
+    echo -e "${BLUE}[+] Creating configuration file...${NC}"
     
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${YELLOW}[*] Creating configuration file...${NC}"
-        echo "# Recon Toolkit Configuration" > "$CONFIG_FILE"
-        echo "# Created on $(date)" >> "$CONFIG_FILE"
-        echo "CHAOS_API_KEY=\"\"" >> "$CONFIG_FILE"
-        echo "GITHUB_API_TOKEN=\"\"" >> "$CONFIG_FILE"
-        echo "GITLAB_API_TOKEN=\"\"" >> "$CONFIG_FILE"
-        echo "THREADS=\"100\"" >> "$CONFIG_FILE"
-    fi
-    
-    echo -e "${YELLOW}[?] Would you like to configure API keys now? (y/n)${NC}"
-    read -r configure_keys
-    
-    if [[ "$configure_keys" =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}[?] Enter your Chaos API key (leave blank to skip):${NC}"
-        read -r chaos_key
+        echo -e "${YELLOW}[?] Enter your Chaos API key (leave blank if you don't have one):${NC}"
+        read -r CHAOS_API_KEY
         
-        echo -e "${YELLOW}[?] Enter your GitHub API token (leave blank to skip):${NC}"
-        read -r github_token
+        echo -e "${YELLOW}[?] Enter your GitHub API token (leave blank if you don't have one):${NC}"
+        read -r GITHUB_API_TOKEN
         
-        echo -e "${YELLOW}[?] Enter your GitLab API token (leave blank to skip):${NC}"
-        read -r gitlab_token
+        echo -e "${YELLOW}[?] Enter your GitLab API token (leave blank if you don't have one):${NC}"
+        read -r GITLAB_API_TOKEN
         
-        if [ -n "$chaos_key" ]; then
-            sed -i.bak "s/CHAOS_API_KEY=\"\"/CHAOS_API_KEY=\"$chaos_key\"/" "$CONFIG_FILE"
-        fi
+        echo -e "${YELLOW}[?] Default number of threads to use (default: 100):${NC}"
+        read -r THREADS
+        THREADS=${THREADS:-100}
         
-        if [ -n "$github_token" ]; then
-            sed -i.bak "s/GITHUB_API_TOKEN=\"\"/GITHUB_API_TOKEN=\"$github_token\"/" "$CONFIG_FILE"
-        fi
+        cat <<EOL > "$CONFIG_FILE"
+CHAOS_API_KEY="$CHAOS_API_KEY"
+GITHUB_API_TOKEN="$GITHUB_API_TOKEN"
+GITLAB_API_TOKEN="$GITLAB_API_TOKEN"
+THREADS="$THREADS"
+EOL
         
-        if [ -n "$gitlab_token" ]; then
-            sed -i.bak "s/GITLAB_API_TOKEN=\"\"/GITLAB_API_TOKEN=\"$gitlab_token\"/" "$CONFIG_FILE"
-        fi
-        
-        rm -f "$CONFIG_FILE.bak"
-    fi
-    
-    echo -e "${GREEN}[✓] Configuration setup complete${NC}"
-}
-
-# Function to copy recon playbook script
-copy_recon_playbook() {
-    echo -e "${BLUE}[+] Copying recon-playbook.sh...${NC}"
-    
-    if [ -f "playbook/rek-playbook.sh" ]; then
-        cp "playbook/rek-playbook.sh" "$WORKING_DIR/recon-playbook.sh"
-        chmod +x "$WORKING_DIR/recon-playbook.sh"
-        echo -e "${GREEN}[✓] Recon playbook copied to $WORKING_DIR/recon-playbook.sh${NC}"
+        echo -e "${GREEN}[✓] Configuration file created at $CONFIG_FILE${NC}"
     else
-        echo -e "${RED}[!] playbook/rek-playbook.sh not found${NC}"
+        echo -e "${GREEN}[✓] Configuration file already exists${NC}"
     fi
 }
 
@@ -439,103 +382,70 @@ copy_recon_playbook() {
 verify_installation() {
     echo -e "${BLUE}[+] Verifying installation...${NC}"
     
-    if [ -d "$WORKING_DIR" ] && [ -d "$TOOLS_DIR" ] && [ -d "$WORDLISTS_DIR" ]; then
-        echo -e "${GREEN}[✓] Directory structure verified${NC}"
-    else
-        echo -e "${RED}[!] Directory structure is incomplete${NC}"
-    fi
+    local tools=(
+        "subfinder"
+        "assetfinder"
+        "findomain"
+        "chaos"
+        "github-subdomains"
+        "gitlab-subdomains"
+        "httpx"
+        "naabu"
+        "gospider"
+        "katana"
+        "gau"
+        "getjs"
+        "cariddi"
+        "dnsgen"
+        "goaltdns"
+        "gotator"
+        "puredns"
+        "gf"
+    )
     
-    if [ -f "$CONFIG_FILE" ]; then
-        echo -e "${GREEN}[✓] Configuration file verified${NC}"
-    else
-        echo -e "${RED}[!] Configuration file is missing${NC}"
-    fi
+    printf "%-20s %-10s\n" "Tool" "Status"
+    printf "%-20s %-10s\n" "--------------------" "----------"
     
-    if [ -f "$RESOLVERS_FILE" ]; then
-        echo -e "${GREEN}[✓] Resolvers file verified${NC}"
-    else
-        echo -e "${RED}[!] Resolvers file is missing${NC}"
-    fi
+    local all_tools_installed=true
     
-    if command -v go &> /dev/null; then
-        echo -e "${GREEN}[✓] Go installation verified${NC}"
-    else
-        echo -e "${RED}[!] Go is not installed or not in PATH${NC}"
-    fi
-    
-    tools_missing=0
-    for tool in subfinder assetfinder httpx naabu gospider katana gau getJS puredns gf github-subdomains gitlab-subdomains findomain; do
-        if ! command -v $tool &> /dev/null; then
-            echo -e "${RED}[!] Tool '$tool' is not installed or not in PATH${NC}"
-            tools_missing=$((tools_missing + 1))
+    for tool in "${tools[@]}"; do
+        if command -v "$tool" &> /dev/null; then
+            printf "%-20s ${GREEN}%-10s${NC}\n" "$tool" "Installed"
+        else
+            printf "%-20s ${RED}%-10s${NC}\n" "$tool" "Missing"
+            all_tools_installed=false
         fi
     done
     
-    if [ $tools_missing -eq 0 ]; then
-        echo -e "${GREEN}[✓] All core tools verified${NC}"
+    if [ -f "$RESOLVERS_FILE" ]; then
+        printf "%-20s ${GREEN}%-10s${NC}\n" "resolvers.txt" "Available"
     else
-        echo -e "${RED}[!] $tools_missing core tools are missing${NC}"
+        printf "%-20s ${RED}%-10s${NC}\n" "resolvers.txt" "Missing"
+        all_tools_installed=false
     fi
     
-    if [ -d "$WORKING_DIR" ] && [ -f "$CONFIG_FILE" ] && [ -f "$RESOLVERS_FILE" ] && command -v go &> /dev/null && [ $tools_missing -eq 0 ]; then
-        echo -e "\n${GREEN}[✓] Installation verified successfully!${NC}"
+    if [ -d "$GF_PATTERNS_DIR" ]; then
+        printf "%-20s ${GREEN}%-10s${NC}\n" "gf patterns" "Available"
     else
-        echo -e "\n${YELLOW}[!] Installation has issues that need to be addressed${NC}"
+        printf "%-20s ${RED}%-10s${NC}\n" "gf patterns" "Missing"
+        all_tools_installed=false
+    fi
+    
+    if [ -f "$CONFIG_FILE" ]; then
+        printf "%-20s ${GREEN}%-10s${NC}\n" "config.conf" "Available"
+    else
+        printf "%-20s ${RED}%-10s${NC}\n" "config.conf" "Missing"
+        all_tools_installed=false
+    fi
+    
+    if [ "$all_tools_installed" = true ]; then
+        echo -e "${GREEN}[✓] All components verified successfully${NC}"
+    else
+        echo -e "${RED}[!] Some components are missing. Please review the installation logs${NC}"
     fi
 }
 
-# Function to create convenient tool symlinks
-create_symlinks() {
-    echo -e "${BLUE}[+] Creating convenient symlinks...${NC}"
-    
-    if [ "$(id -u)" -eq 0 ] || command -v sudo &> /dev/null; then
-        if [ -f "$WORKING_DIR/recon-playbook.sh" ]; then
-            if command -v sudo &> /dev/null; then
-                sudo ln -sf "$WORKING_DIR/recon-playbook.sh" /usr/local/bin/recon-playbook
-            else
-                ln -sf "$WORKING_DIR/recon-playbook.sh" /usr/local/bin/recon-playbook
-            fi
-            echo -e "${GREEN}[✓] Symlink created: you can now run 'recon-playbook' from anywhere${NC}"
-        else
-            echo -e "${RED}[!] recon-playbook.sh not found, skipping symlink creation${NC}"
-        fi
-    else
-        echo -e "${YELLOW}[!] Cannot create symlinks without sudo privileges${NC}"
-    fi
-}
-
-# Function to display summary
-display_summary() {
-    echo -e "\n${BLUE}╔═══════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                        Installation Summary                               ║${NC}"
-    echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
-    
-    echo -e "\n${GREEN}✓ Recon toolkit installed successfully!${NC}"
-    echo -e "\n${YELLOW}Key locations:${NC}"
-    echo -e "  • Working directory: $WORKING_DIR"
-    echo -e "  • Tools directory: $TOOLS_DIR"
-    echo -e "  • Wordlists: $WORDLISTS_DIR"
-    echo -e "  • Configuration: $CONFIG_FILE"
-    
-    echo -e "\n${YELLOW}Usage:${NC}"
-    echo -e "  • Run the recon playbook: $WORKING_DIR/recon-playbook.sh"
-    if [ -f "/usr/local/bin/recon-playbook" ]; then
-        echo -e "  • Or simply type: recon-playbook"
-    fi
-    
-    echo -e "\n${YELLOW}Next steps:${NC}"
-    echo -e "  1. Ensure all API keys are configured in $CONFIG_FILE"
-    
-    if [ "$(id -u)" -ne 0 ] && ! command -v sudo &> /dev/null; then
-        echo -e "  2. Consider running parts of this script with sudo to create system-wide symlinks"
-    fi
-    
-    echo -e "  3. Run your first recon: $WORKING_DIR/recon-playbook.sh -d example.com"
-    
-    echo -e "\n${BLUE}Happy hunting!${NC}"
-}
-
-# Main installation function
+# Main function
 main() {
     detect_system
     setup_directories
@@ -548,12 +458,13 @@ main() {
     install_code_platform_tools
     download_resolvers
     download_wordlists
-    setup_config
-    copy_recon_playbook
+    create_config
     verify_installation
-    create_symlinks
-    display_summary
+    
+    echo -e "\n${GREEN}[✓] Installation completed successfully${NC}"
+    echo -e "${YELLOW}[!] Please ensure your PATH includes $TOOLS_DIR and $HOME/go/bin${NC}"
+    echo -e "${YELLOW}[!] You may need to restart your terminal or source your shell configuration${NC}"
+    echo -e "${BLUE}[+] Ready to run the Modern Recon Playbook (v1)${NC}"
 }
 
-# Run the main function
-main
+main "$@"

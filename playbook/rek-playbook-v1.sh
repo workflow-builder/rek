@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ╔═════════════════════════════════════════════════════════════╗
-# ║  Modern Recon Playbook for Bug Bounty Hunters               ║
+# ║  Modern Recon Playbook for Bug Bounty Hunters (v1)          ║
 # ║  Automated reconnaissance pipeline based on Open sources    ║
-# ║  methodology                                                ║
+# ║  methodology                                               ║
 # ╚═════════════════════════════════════════════════════════════╝
 
 # Terminal colors
@@ -17,13 +17,12 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}"
 echo "╔═══════════════════════════════════════════════════════════════════════════╗"
 echo "║                                                                           ║"
-echo "║   From Subdomains to Secrets: A Modern Recon Playbook for Bug Hunters     ║"
+echo "║   From Subdomains to Secrets: A Modern Recon Playbook for Bug Hunters (v1)║"
 echo "║                                                                           ║"
 echo "╚═══════════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
 # Variables
-# Use environment variables or dynamically determine paths
 WORKING_DIR="${RECON_TOOLKIT_DIR:-$(dirname "$(realpath "$0")")}"
 TOOLS_DIR="${TOOLS_DIR:-$WORKING_DIR/tools}"
 OUTPUT_DIR=""
@@ -34,7 +33,6 @@ RESOLVERS_FILE="$WORKING_DIR/resolvers.txt"
 THREADS=100
 WORDLISTS_DIR="${WORDLISTS_DIR:-$WORKING_DIR/wordlists}"
 RESULTS_DIR=""
-# Update PATH to include tools
 export PATH="$TOOLS_DIR:$HOME/go/bin:$PATH"
 
 # Create required directories
@@ -44,7 +42,6 @@ setup_directories() {
     mkdir -p "$TOOLS_DIR"
     mkdir -p "$WORDLISTS_DIR"
     
-    # Create results directory with timestamp
     timestamp=$(date +"%Y%m%d-%H%M%S")
     RESULTS_DIR="$WORKING_DIR/results/$TARGET_DOMAIN-$timestamp"
     mkdir -p "$RESULTS_DIR"
@@ -65,7 +62,7 @@ command_exists() {
 # Function to check if a Go tool is installed
 go_tool_exists() {
     if command_exists go; then
-        if [ -x "$(command -v $1)" ]; then
+        if [ -x "$(command -v "$1")" ]; then
             return 0
         fi
     fi
@@ -92,118 +89,50 @@ install_go() {
 install_tools() {
     echo -e "${BLUE}[+] Installing required tools...${NC}"
     
-    # Install Go if not installed
     if ! command_exists go; then
         install_go
     fi
     
-    # Install Python tools
     if command_exists pip3; then
         echo -e "${YELLOW}[*] Installing Python dependencies...${NC}"
         pip3 install requests dnsgen tldextract dnspython
     fi
     
-    # Install Go tools if not already installed
     if command_exists go; then
-        if ! go_tool_exists subfinder; then
-            echo -e "${YELLOW}[*] Installing subfinder...${NC}"
-            go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-        fi
-        
-        if ! go_tool_exists assetfinder; then
-            echo -e "${YELLOW}[*] Installing assetfinder...${NC}"
-            go install -v github.com/tomnomnom/assetfinder@latest
-        fi
-        
-        if ! go_tool_exists findomain; then
-            echo -e "${YELLOW}[*] Installing findomain...${NC}"
-            if [ "$(uname)" == "Darwin" ]; then
-                brew install findomain
-            else
-                curl -LO https://github.com/findomain/findomain/releases/latest/download/findomain-linux
-                chmod +x findomain-linux
-                mv findomain-linux "$TOOLS_DIR/findomain"
+        for tool in subfinder assetfinder findomain chaos httpx naabu gospider katana gau getjs cariddi goaltdns gotator puredns gf; do
+            if ! go_tool_exists "$tool"; then
+                echo -e "${YELLOW}[*] Installing $tool...${NC}"
+                case $tool in
+                    subfinder) go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest ;;
+                    assetfinder) go install -v github.com/tomnomnom/assetfinder@latest ;;
+                    findomain)
+                        if [ "$(uname)" == "Darwin" ]; then
+                            brew install findomain
+                        else
+                            curl -LO https://github.com/findomain/findomain/releases/latest/download/findomain-linux
+                            chmod +x findomain-linux
+                            mv findomain-linux "$TOOLS_DIR/findomain"
+                        fi
+                        ;;
+                    chaos) go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest ;;
+                    httpx) go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest ;;
+                    naabu) go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest ;;
+                    gospider) go install -v github.com/jaeles-project/gospider@latest ;;
+                    katana) go install -v github.com/projectdiscovery/katana/cmd/katana@latest ;;
+                    gau) go install -v github.com/lc/gau/v2/cmd/gau@latest ;;
+                    getjs) go install -v github.com/003random/getJS@latest ;;
+                    cariddi) go install -v github.com/edoardottt/cariddi/cmd/cariddi@latest ;;
+                    goaltdns) go install -v github.com/subfinder/goaltdns@latest ;;
+                    gotator) go install -v github.com/Josue87/gotator@latest ;;
+                    puredns) go install -v github.com/d3mondev/puredns/v2@latest ;;
+                    gf) go install -v github.com/tomnomnom/gf@latest ;;
+                esac
             fi
-        fi
-        
-        if ! go_tool_exists chaos; then
-            echo -e "${YELLOW}[*] Installing chaos...${NC}"
-            go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
-        fi
-        
-        if ! go_tool_exists httpx; then
-            echo -e "${YELLOW}[*] Installing httpx...${NC}"
-            go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-        fi
-        
-        if ! go_tool_exists naabu; then
-            echo -e "${YELLOW}[*] Installing naabu...${NC}"
-            go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-        fi
-        
-        if ! go_tool_exists gospider; then
-            echo -e "${YELLOW}[*] Installing gospider...${NC}"
-            go install -v github.com/jaeles-project/gospider@latest
-        fi
-        
-        if ! go_tool_exists katana; then
-            echo -e "${YELLOW}[*] Installing katana...${NC}"
-            go install -v github.com/projectdiscovery/katana/cmd/katana@latest
-        fi
-        
-        if ! go_tool_exists gau; then
-            echo -e "${YELLOW}[*] Installing gau...${NC}"
-            go install -v github.com/lc/gau/v2/cmd/gau@latest
-        fi
-        
-        if ! go_tool_exists getjs; then
-            echo -e "${YELLOW}[*] Installing getJS...${NC}"
-            go install -v github.com/003random/getJS@latest
-        fi
-        
-        if ! go_tool_exists cariddi; then
-            echo -e "${YELLOW}[*] Installing cariddi...${NC}"
-            go install -v github.com/edoardottt/cariddi/cmd/cariddi@latest
-        fi
-        
-        if ! go_tool_exists goaltdns; then
-            echo -e "${YELLOW}[*] Installing goaltdns...${NC}"
-            go install -v github.com/subfinder/goaltdns@latest
-        fi
-        
-        if ! go_tool_exists gotator; then
-            echo -e "${YELLOW}[*] Installing gotator...${NC}"
-            go install -v github.com/Josue87/gotator@latest
-        fi
-        
-        if ! go_tool_exists ripgen; then
-            echo -e "${YELLOW}[*] Skipping ripgen due to package issues...${NC}"
-            # go install -v github.com/resyncgg/ripgen/cmd/ripgen@latest
-        fi
-        
-        if ! go_tool_exists puredns; then
-            echo -e "${YELLOW}[*] Installing puredns...${NC}"
-            go install -v github.com/d3mondev/puredns/v2@latest
-        fi
-        
-        if ! go_tool_exists gf; then
-            echo -e "${YELLOW}[*] Installing gf...${NC}"
-            go install -v github.com/tomnomnom/gf@latest
-            
-            echo -e "${YELLOW}[*] Installing gf patterns...${NC}"
-            if [ -d ~/.gf ]; then
-                echo -e "${YELLOW}[!] ~/.gf already exists. Updating...${NC}"
-                git -C ~/.gf pull
-            else
-                mkdir -p ~/.gf
-                git clone https://github.com/1ndianl33t/Gf-Patterns ~/.gf/
-            fi
-        fi
+        done
         
         if ! command_exists github-subdomains; then
             echo -e "${YELLOW}[*] Installing github-subdomains...${NC}"
             if [ -d "$TOOLS_DIR/github-subdomains" ]; then
-                echo -e "${YELLOW}[!] $TOOLS_DIR/github-subdomains already exists. Updating...${NC}"
                 git -C "$TOOLS_DIR/github-subdomains" pull
             else
                 git clone https://github.com/gwen001/github-subdomains.git "$TOOLS_DIR/github-subdomains"
@@ -217,7 +146,6 @@ install_tools() {
         if ! command_exists gitlab-subdomains; then
             echo -e "${YELLOW}[*] Installing gitlab-subdomains...${NC}"
             if [ -d "$TOOLS_DIR/gitlab-subdomains" ]; then
-                echo -e "${YELLOW}[!] $TOOLS_DIR/gitlab-subdomains already exists. Updating...${NC}"
                 git -C "$TOOLS_DIR/gitlab-subdomains" pull
             else
                 git clone https://github.com/gwen001/gitlab-subdomains.git "$TOOLS_DIR/gitlab-subdomains"
@@ -229,7 +157,6 @@ install_tools() {
         fi
     fi
     
-    # Download resolvers if they don't exist
     if [ ! -f "$RESOLVERS_FILE" ]; then
         echo -e "${YELLOW}[*] Downloading resolvers...${NC}"
         curl -s https://raw.githubusercontent.com/blechschmidt/massdns/master/lists/resolvers.txt -o "$RESOLVERS_FILE"
@@ -281,6 +208,13 @@ check_prerequisites() {
         printf "%-20s ${GREEN}%-10s${NC}\n" "resolvers.txt" "Available"
     else
         printf "%-20s ${RED}%-10s${NC}\n" "resolvers.txt" "Missing"
+        all_tools_installed=false
+    fi
+    
+    if [ -d "$HOME/.gf" ]; then
+        printf "%-20s ${GREEN}%-10s${NC}\n" "gf patterns" "Available"
+    else
+        printf "%-20s ${RED}%-10s${NC}\n" "gf patterns" "Missing"
         all_tools_installed=false
     fi
     
@@ -344,44 +278,54 @@ get_target_domain() {
     echo -e "${GREEN}[✓] Target domain set to: $TARGET_DOMAIN${NC}"
 }
 
+# Function to refresh resolvers
+refresh_resolvers() {
+    echo -e "${YELLOW}[*] Refreshing DNS resolvers...${NC}"
+    curl -s https://raw.githubusercontent.com/blechschmidt/massdns/master/lists/resolvers.txt -o "$RESOLVERS_FILE"
+    if [ -s "$RESOLVERS_FILE" ]; then
+        echo -e "${GREEN}[✓] Resolvers refreshed${NC}"
+    else
+        echo -e "${RED}[!] Failed to refresh resolvers${NC}"
+    fi
+}
+
 # Step 1: Subdomain Enumeration
 subdomain_enumeration() {
     echo -e "\n${BLUE}[+] Step 1: Subdomain Enumeration${NC}"
     cd "$RESULTS_DIR/subdomains"
     
     echo -e "${YELLOW}[*] Running subfinder...${NC}"
-    subfinder -d "$TARGET_DOMAIN" -all -recursive -silent -o subfinder.txt
+    subfinder -d "$TARGET_DOMAIN" -all -recursive -silent -o subfinder.txt || echo -e "${RED}[!] subfinder failed${NC}"
     
     echo -e "${YELLOW}[*] Running assetfinder...${NC}"
-    echo "$TARGET_DOMAIN" | assetfinder -subs-only | tee assetfinder.txt
+    echo "$TARGET_DOMAIN" | assetfinder -subs-only | tee assetfinder.txt || echo -e "${RED}[!] assetfinder failed${NC}"
     
     echo -e "${YELLOW}[*] Running findomain...${NC}"
-    findomain -t "$TARGET_DOMAIN" --quiet | tee findomain.txt
+    findomain -t "$TARGET_DOMAIN" --quiet | tee findomain.txt || echo -e "${RED}[!] findomain failed${NC}"
     
     if [ -n "$CHAOS_API_KEY" ]; then
         echo -e "${YELLOW}[*] Running chaos...${NC}"
-        chaos -key "$CHAOS_API_KEY" -d "$TARGET_DOMAIN" -o chaos.txt
+        chaos -key "$CHAOS_API_KEY" -d "$TARGET_DOMAIN" -o chaos.txt || echo -e "${RED}[!] chaos failed${NC}"
     else
         echo -e "${YELLOW}[!] Chaos API key not provided, skipping...${NC}"
     fi
     
     if [ -n "$GITHUB_API_TOKEN" ]; then
         echo -e "${YELLOW}[*] Running github-subdomains...${NC}"
-        github-subdomains -d "$TARGET_DOMAIN" -t "$GITHUB_API_TOKEN" -o github-subdomains.txt
+        github-subdomains -d "$TARGET_DOMAIN" -t "$GITHUB_API_TOKEN" -o github-subdomains.txt || echo -e "${RED}[!] github-subdomains failed${NC}"
     else
         echo -e "${YELLOW}[!] GitHub API token not provided, skipping github-subdomains...${NC}"
     fi
     
     if [ -n "$GITLAB_API_TOKEN" ]; then
         echo -e "${YELLOW}[*] Running gitlab-subdomains...${NC}"
-        gitlab-subdomains -d "$TARGET_DOMAIN" -t "$GITLAB_API_TOKEN" -o gitlab-subdomains.txt
+        gitlab-subdomains -d "$TARGET_DOMAIN" -t "$GITLAB_API_TOKEN" -o gitlab-subdomains.txt || echo -e "${RED}[!] gitlab-subdomains failed${NC}"
     else
         echo -e "${YELLOW}[!] GitLab API token not provided, skipping gitlab-subdomains...${NC}"
     fi
     
     echo -e "${YELLOW}[*] Consolidating and deduplicating results...${NC}"
-    cat *.txt 2>/dev/null > all.txt
-    cat all.txt | sort -u | tee sorted-subdomains.txt
+    cat *.txt 2>/dev/null | sort -u | tee sorted-subdomains.txt
     
     total_subdomains=$(wc -l < sorted-subdomains.txt)
     echo -e "${GREEN}[✓] Subdomain enumeration completed. Found $total_subdomains unique subdomains${NC}"
@@ -397,39 +341,40 @@ subdomain_permutation() {
     cat sorted-subdomains.txt | sed 's/[.]/-/g' | awk -F '-' '{for(i=1;i<=NF;i++){print $i}}' | sort -u >> perms.txt
     
     echo -e "${YELLOW}[*] Running dnsgen...${NC}"
-    cat sorted-subdomains.txt | dnsgen - > output-dnsgen.txt
+    cat sorted-subdomains.txt | dnsgen - > output-dnsgen.txt || echo -e "${RED}[!] dnsgen failed${NC}"
     
     echo -e "${YELLOW}[*] Running goaltdns...${NC}"
     if command_exists goaltdns; then
-        goaltdns -w perms.txt -l sorted-subdomains.txt -o output-goaltdns.txt
+        goaltdns -w perms.txt -l sorted-subdomains.txt -o output-goaltdns.txt || echo -e "${RED}[!] goaltdns failed${NC}"
     else
         echo -e "${RED}[!] goaltdns not found, skipping...${NC}"
     fi
     
     echo -e "${YELLOW}[*] Running gotator...${NC}"
     if command_exists gotator; then
-        gotator -sub sorted-subdomains.txt -perm perms.txt -depth 1 -numbers 1 > output-gotator.txt
+        gotator -sub sorted-subdomains.txt -perm perms.txt -depth 1 -numbers 1 > output-gotator.txt || echo -e "${RED}[!] gotator failed${NC}"
     else
         echo -e "${RED}[!] gotator not found, skipping...${NC}"
     fi
     
     echo -e "${YELLOW}[*] Skipping ripgen due to package issues...${NC}"
-    # cat sorted-subdomains.txt | ripgen > output-ripgen.txt
     
     echo -e "${YELLOW}[*] Merging permutation results...${NC}"
-    cat output*.txt | sort -u > output.txt
+    cat output*.txt 2>/dev/null | sort -u > output.txt
+    
+    echo -e "${YELLOW}[*] Refreshing resolvers...${NC}"
+    refresh_resolvers
     
     echo -e "${YELLOW}[*] Resolving permutated subdomains...${NC}"
     if command_exists puredns; then
-        cat output.txt | puredns resolve --resolvers "$RESOLVERS_FILE" --write subdomains-permutated.txt
+        puredns resolve --resolvers "$RESOLVERS_FILE" --write subdomains-permutated.txt output.txt || echo -e "${RED}[!] puredns failed${NC}"
     else
         echo -e "${RED}[!] puredns not found, skipping resolution...${NC}"
     fi
     
     echo -e "${YELLOW}[*] Merging all subdomains...${NC}"
     if [ -f "subdomains-permutated.txt" ]; then
-        cat sorted-subdomains.txt subdomains-permutated.txt > all-subdomains.txt
-        cat all-subdomains.txt | sort -u | tee final-subdomains.txt
+        cat sorted-subdomains.txt subdomains-permutated.txt | sort -u | tee final-subdomains.txt
     else
         cp sorted-subdomains.txt final-subdomains.txt
     fi
@@ -444,10 +389,10 @@ identify_live_subdomains() {
     cd "$RESULTS_DIR/subdomains"
     
     echo -e "${YELLOW}[*] Running httpx to identify live subdomains...${NC}"
-    httpx -l final-subdomains.txt -threads "$THREADS" -o subs-alive.txt
+    httpx -l final-subdomains.txt -threads "$THREADS" -o subs-alive.txt || echo -e "${RED}[!] httpx failed${NC}"
     
     echo -e "${YELLOW}[*] Fingerprinting live subdomains...${NC}"
-    httpx -l subs-alive.txt -title -sc -td -server -fr -probe -location -o httpx-output.txt
+    httpx -l subs-alive.txt -title -sc -td -server -fr -probe -location -o httpx-output.txt || echo -e "${RED}[!] httpx failed${NC}"
     
     total_live=$(wc -l < subs-alive.txt)
     echo -e "${GREEN}[✓] Live subdomain identification completed. Found $total_live live subdomains${NC}"
@@ -459,10 +404,18 @@ port_scanning() {
     cd "$RESULTS_DIR/subdomains"
     
     echo -e "${YELLOW}[*] Running naabu for port scanning...${NC}"
-    naabu -c "$THREADS" -l subs-alive.txt -port 80,443,3000,5000,8080,8000,8081,8888,8443 -o subs-portscanned.txt
+    if [ "$(id -u)" -eq 0 ] || command -v sudo &> /dev/null; then
+        sudo naabu -c "$THREADS" -l subs-alive.txt -port 80,443,3000,5000,8080,8000,8081,8888,8443 -o subs-portscanned.txt || {
+            echo -e "${YELLOW}[*] Falling back to connect scanning...${NC}"
+            naabu -c "$THREADS" -l subs-alive.txt -port 80,443,3000,5000,8080,8000,8081,8888,8443 -s connect -o subs-portscanned.txt || echo -e "${RED}[!] naabu failed${NC}"
+        }
+    else
+        echo -e "${YELLOW}[*] Running naabu with connect scanning (no sudo)...${NC}"
+        naabu -c "$THREADS" -l subs-alive.txt -port 80,443,3000,5000,8080,8000,8081,8888,8443 -s connect -o subs-portscanned.txt || echo -e "${RED}[!] naabu failed${NC}"
+    fi
     
     echo -e "${YELLOW}[*] Fingerprinting services on open ports...${NC}"
-    httpx -l subs-portscanned.txt -title -sc -td -server -fr -o httpx-naabu.txt
+    httpx -l subs-portscanned.txt -title -sc -td -server -fr -o httpx-naabu.txt || echo -e "${RED}[!] httpx failed${NC}"
     
     echo -e "${GREEN}[✓] Port scanning completed${NC}"
 }
@@ -473,17 +426,17 @@ content_discovery() {
     cd "$RESULTS_DIR/endpoints"
     
     echo -e "${YELLOW}[*] Running gospider...${NC}"
-    gospider -S "$RESULTS_DIR/subdomains/subs-alive.txt" -a -r --js --sitemap --robots -d 30 -c 10 -o gospider-output
-    find gospider-output -type f -exec cat {} \; > gospider-all.txt
+    gospider -S "$RESULTS_DIR/subdomains/subs-alive.txt" -a -r --js --sitemap --robots -d 30 -c 10 -o gospider-output || echo -e "${RED}[!] gospider failed${NC}"
+    cat gospider-output/* > gospider-all.txt 2>/dev/null || echo -e "${RED}[!] gospider output aggregation failed${NC}"
     
     echo -e "${YELLOW}[*] Running katana...${NC}"
-    katana -list "$RESULTS_DIR/subdomains/subs-alive.txt" -kf all -jc -d 30 -c 50 -silent | tee katana-output.txt
+    katana -list "$RESULTS_DIR/subdomains/subs-alive.txt" -kf url,form,js -jc -d 30 -c 50 -silent | tee katana-output.txt || echo -e "${RED}[!] katana failed${NC}"
     
     echo -e "${YELLOW}[*] Running gau...${NC}"
-    cat "$RESULTS_DIR/subdomains/subs-alive.txt" | gau --threads 50 --blacklist jpg,jpeg,png,gif,svg,css | tee gau-output.txt
+    cat "$RESULTS_DIR/subdomains/subs-alive.txt" | gau --threads 50 --blacklist jpg,jpeg,png,gif,svg,css | tee gau-output.txt || echo -e "${RED}[!] gau failed${NC}"
     
     echo -e "${YELLOW}[*] Combining all spider results...${NC}"
-    cat gospider-all.txt katana-output.txt gau-output.txt | sort -u > spider-output.txt
+    cat gospider-all.txt katana-output.txt gau-output.txt 2>/dev/null | sort -u > spider-output.txt
     
     total_urls=$(wc -l < spider-output.txt)
     echo -e "${GREEN}[✓] Content discovery completed. Found $total_urls unique URLs${NC}"
@@ -496,15 +449,14 @@ analyze_vulnerabilities() {
     
     if [ -d "$HOME/.gf" ]; then
         echo -e "${YELLOW}[*] Filtering for potential vulnerabilities...${NC}"
-        
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf xss | tee checkfor-xss.txt
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf lfi | tee checkfor-lfi.txt
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf ssrf | tee checkfor-ssrf.txt
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf sqli | tee checkfor-sqli.txt
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf rce | tee checkfor-rce.txt
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf ssti | tee checkfor-ssti.txt
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | gf idor | tee checkfor-idor.txt
-        
+        vuln_types=("xss" "lfi" "ssrf" "sqli" "rce" "ssti" "idor")
+        for vuln in "${vuln_types[@]}"; do
+            if [ -f "$HOME/.gf/$vuln.json" ]; then
+                gf "$vuln" < "$RESULTS_DIR/endpoints/spider-output.txt" > "checkfor-$vuln.txt" || echo -e "${RED}[!] gf $vuln failed${NC}"
+            else
+                echo -e "${YELLOW}[!] GF pattern for $vuln not found, skipping...${NC}"
+            fi
+        done
         echo -e "${GREEN}[✓] Vulnerability pattern analysis completed${NC}"
     else
         echo -e "${RED}[!] GF patterns not found. Skipping vulnerability analysis.${NC}"
@@ -517,14 +469,13 @@ categorize_endpoints() {
     cd "$RESULTS_DIR/endpoints"
     
     echo -e "${YELLOW}[*] Extracting endpoints by file extension...${NC}"
-    
-    cat spider-output.txt | grep -i -e '\.json$' | tee json-endpoints.txt
-    cat spider-output.txt | grep -i -e '\.bak$' -e '\.backup$' -e '\.old$' -e '\.tmp$' | tee backup-endpoints.txt
-    cat spider-output.txt | grep -i -e '\.conf$' -e '\.config$' -e '\.env$' -e '\.ini$' | tee config-endpoints.txt
-    cat spider-output.txt | grep -i -e '\.pdf$' | tee pdf-endpoints.txt
-    cat spider-output.txt | grep -i -e '\.xml$' | tee xml-endpoints.txt
-    cat spider-output.txt | grep -i -e '\.sql$' | tee sql-endpoints.txt
-    cat spider-output.txt | grep -i -e '\.log$' | tee log-endpoints.txt
+    grep -i -e '\.json$' spider-output.txt | tee json-endpoints.txt
+    grep -i -e '\.bak$' -e '\.backup$' -e '\.old$' -e '\.tmp$' spider-output.txt | tee backup-endpoints.txt
+    grep -i -e '\.conf$' -e '\.config$' -e '\.env$' -e '\.ini$' spider-output.txt | tee config-endpoints.txt
+    grep -i -e '\.pdf$' spider-output.txt | tee pdf-endpoints.txt
+    grep -i -e '\.xml$' spider-output.txt | tee xml-endpoints.txt
+    grep -i -e '\.sql$' spider-output.txt | tee sql-endpoints.txt
+    grep -i -e '\.log$' spider-output.txt | tee log-endpoints.txt
     
     echo -e "${GREEN}[✓] Endpoint categorization completed${NC}"
 }
@@ -536,15 +487,15 @@ js_analysis() {
     
     echo -e "${YELLOW}[*] Extracting JavaScript files...${NC}"
     if command_exists getjs; then
-        getjs --input "$RESULTS_DIR/endpoints/spider-output.txt" --complete --resolve --threads 50 --output getjs-output.txt
+        getjs --input "$RESULTS_DIR/endpoints/spider-output.txt" --complete --resolve --threads 50 --output getjs-output.txt || echo -e "${RED}[!] getjs failed${NC}"
     else
         echo -e "${RED}[!] getJS not found. Attempting alternative extraction...${NC}"
-        cat "$RESULTS_DIR/endpoints/spider-output.txt" | grep -i '\.js' | tee getjs-output.txt
+        grep -i '\.js$' "$RESULTS_DIR/endpoints/spider-output.txt" | tee getjs-output.txt
     fi
     
     echo -e "${YELLOW}[*] Scanning JavaScript files for secrets...${NC}"
     if command_exists cariddi; then
-        cat getjs-output.txt | cariddi -headers "User-Agent: Mozilla/5.0" -intensive -e -s | tee js-secrets.txt
+        cariddi -headers "User-Agent: Mozilla/5.0" -intensive -e -s < getjs-output.txt | tee js-secrets.txt || echo -e "${RED}[!] cariddi failed${NC}"
     else
         echo -e "${RED}[!] cariddi not found. Skipping JavaScript secret analysis.${NC}"
     fi
@@ -654,7 +605,7 @@ cleanup() {
 # Function to display program help
 display_help() {
     echo -e "${BLUE}Usage:${NC}"
-    echo -e "  ./recon-playbook.sh [OPTIONS]"
+    echo -e "  ./rek-playbook-v1.sh [OPTIONS]"
     echo ""
     echo -e "${BLUE}Options:${NC}"
     echo -e "  -h, --help                 Display this help message"
@@ -675,9 +626,9 @@ display_help() {
     echo -e "  --skip-jsanalysis          Skip JavaScript analysis"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
-    echo -e "  ./recon-playbook.sh -d example.com"
-    echo -e "  ./recon-playbook.sh -d example.com -t 200 --skip-portscan"
-    echo -e "  ./recon-playbook.sh -d example.com --chaos-key YOUR_KEY --github-token YOUR_TOKEN"
+    echo -e "  ./rek-playbook-v1.sh -d example.com"
+    echo -e "  ./rek-playbook-v1.sh -d example.com -t 200 --skip-portscan"
+    echo -e "  ./rek-playbook-v1.sh -d example.com --chaos-key YOUR_KEY --github-token YOUR_TOKEN"
 }
 
 # Parse command line arguments

@@ -1172,16 +1172,22 @@ class ReconTool:
     def run_playbook(self):
         """Execute the recon playbook scripts with real-time log streaming and dynamic paths."""
         print(colored("[*] Executing recon playbook...", "blue"))
-        playbook_dir = "playbook"
-        install_script = os.path.join(playbook_dir, "install-script.sh")
-        playbook_script = os.path.join(playbook_dir, "rek-playbook.sh")
+        
 
         # Determine the recon-toolkit directory dynamically
         script_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of rek.py
-        recon_toolkit_dir = os.path.dirname(script_dir)  # Assume recon-toolkit is parent
-        tools_dir = os.path.join(recon_toolkit_dir, "tools")
-        config_path = os.path.join(recon_toolkit_dir, "config.conf")
-        wordlists_dir = os.path.join(recon_toolkit_dir, "wordlists")
+        # recon_toolkit_dir = os.path.dirname(script_dir)  # Assume recon-toolkit is parent
+        playbook_dir = os.path.join(script_dir, "playbook")
+        install_script = os.path.join(playbook_dir, "install-script.sh")
+        playbook_script = os.path.join(playbook_dir, "rek-playbook.sh")
+        # tools_dir = os.path.join(recon_toolkit_dir, "tools")
+        # config_path = os.path.join(recon_toolkit_dir, "config.conf")
+        # wordlists_dir = os.path.join(recon_toolkit_dir, "wordlists")
+        tools_dir = os.path.join(script_dir, "tools")
+        config_path = os.path.join(script_dir, "config.conf")
+        wordlists_dir = os.path.join(script_dir, "wordlists")
+        recon_toolkit_dir = script_dir  # Use the directory of rek.py as the toolkit directory
+
 
         # Check if playbook directory and scripts exist
         if not os.path.isdir(playbook_dir):
@@ -1206,9 +1212,9 @@ class ReconTool:
         env = os.environ.copy()
         # Add tools directory and Go binary paths to PATH
         go_bin = os.path.expanduser("~/go/bin")
-        env["PATH"] = f"{tools_dir}:{go_bin}:{env.get('PATH', '')}"
+        env["PATH"] = f"{os.path.join(script_dir, 'tools')}:{go_bin}:{env.get('PATH', '')}"
         # Set dynamic paths
-        env["RECON_TOOLKIT_DIR"] = recon_toolkit_dir
+        env["RECON_TOOLKIT_DIR"] = script_dir
         env["TOOLS_DIR"] = tools_dir
         env["CONFIG_PATH"] = config_path
         env["WORDLISTS_DIR"] = wordlists_dir
