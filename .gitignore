@@ -4,7 +4,6 @@
 !global_wordlist.txt
 !wordlists/
 !wordlists/*.txt
-!README.md
 # Explicitly ignore specific files and directories
 results/
 venv/
@@ -22,7 +21,6 @@ __pycache__/
 .vscode/
 .idea/
 *.iml
-*.md
 *.csv
 *.png
 *.jpg
