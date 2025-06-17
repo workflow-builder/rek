@@ -4,6 +4,7 @@
 !global_wordlist.txt
 !wordlists/
 !wordlists/*.txt
+!README.md
 # Explicitly ignore specific files and directories
 results/
 venv/
