@@ -1,10 +1,9 @@
-
 #!/bin/bash
 
 # ╔═════════════════════════════════════════════════════════════╗
 # ║  Modern Recon Playbook for Bug Bounty Hunters (v1)          ║
 # ║  Automated reconnaissance pipeline based on Open sources    ║
-# ║  methodology                                               ║
+# ║  methodology                                                ║
 # ╚═════════════════════════════════════════════════════════════╝
 
 # Terminal colors

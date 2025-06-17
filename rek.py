@@ -1131,7 +1131,7 @@ class ReconTool:
             print(colored("[!] No domain provided", "red"))
             return
 
-        _, _, extracted_domain = extract(domain)
+        extracted_domain = extract(domain).domain
         if not extracted_domain:
             print(colored("[!] Invalid domain format", "red"))
             return
@@ -1170,6 +1170,7 @@ class ReconTool:
         try:
             subprocess.run(["chmod", "+x", install_script], check=True, capture_output=True)
             subprocess.run(["chmod", "+x", playbook_path], check=True, capture_output=True)
+            
         except subprocess.CalledProcessError as e:
             print(colored(f"[!] Error making scripts executable: {e.stderr.decode()}", "red"))
             return
@@ -1459,10 +1460,11 @@ class ReconTool:
             target = args.email_domain or args.email_username or args.org
             target_type = "domain" if args.email_domain else "username" if args.email_username else "organization"
             print(colored(f"Running Email Search for {target_type}: {target}...", "green"))
+        username = args.org or args.email_username
         self.email_searcher.run(
             domain=args.email_domain,
-            username=args.email_username,
-            org=args.org,
+            username=username,
+            # org=args.org,
             token=args.token,
             output_file=args.output or "email_results.csv",
             max_commits=args.limit_commits,
@@ -1530,7 +1532,7 @@ class ReconTool:
             else:
                 print(colored("Invalid option. Please select 1-5.", "red"))
 
-def main():
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")
     parser.add_argument('-d', '--domain', help="Domain for subdomain enumeration (e.g., xyz.com)")
     parser.add_argument('--email-domain', help="Domain for email search (e.g., xyz.com)")
@@ -1543,7 +1545,7 @@ def main():
     parser.add_argument('-w', '--subdomain-wordlist', help="Wordlist file for subdomain enumeration")
     parser.add_argument('--dir-wordlist', help="Wordlist file for directory scanning")
     parser.add_argument('--token', help="GitHub Personal Access Token")
-    parser.add_argument('--hibp-key', help="Have I Been Pwned API key")
+    parser.add_argument('--hibp-key', help="HIBP API key for breach checks")
     parser.add_argument('--limit-commits', type=int, default=50, help="Max commits to scan per repo")
     parser.add_argument('--skip-forks', action='store_true', help="Skip forked repositories")
     parser.add_argument('-t', '--timeout', type=int, default=10, help="Request timeout in seconds")
@@ -1553,16 +1555,5 @@ def main():
     parser.add_argument('--silent', action='store_true', help="Run in silent mode (only show main status messages)")
 
     args = parser.parse_args()
-
-    # Set up logging based on silent flag
-    if args.silent:
-        logging.basicConfig(level=logging.CRITICAL)
-    else:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-    # Initialize and run the recon tool
     recon_tool = ReconTool(args)
     recon_tool.run()
-
-if __name__ == "__main__":
-    main()
