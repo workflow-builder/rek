@@ -21,7 +21,6 @@ __pycache__/
 .vscode/
 .idea/
 *.iml
-*.md
 *.csv
 *.png
 *.jpg
