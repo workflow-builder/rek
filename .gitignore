@@ -6,7 +6,9 @@
 !wordlists/*.txt
 # Explicitly ignore specific files and directories
 results/
-venv
+venv/
+pipelines/
+tools/
 http_results.csv
 __pycache__/
 *.pyc
@@ -19,7 +21,6 @@ __pycache__/
 .vscode/
 .idea/
 *.iml
-*.md
 *.csv
 *.png
 *.jpg

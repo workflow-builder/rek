@@ -1,0 +1,455 @@
+
+# REK - Reconnaissance Toolkit
+
+**A Modern Recon Playbook for Bug Bounty Hunters**
+
+REK is a comprehensive reconnaissance toolkit designed for ethical hackers and bug bounty hunters. It provides automated reconnaissance pipelines through sophisticated playbooks, along with modular subdomain enumeration, HTTP status checking, directory scanning, and email search capabilities.
+
+**Authors:** Jayresearcher, NarutoX, Ninza
+
+## 🚀 Automated Playbook System
+
+### Core Playbook Features
+The REK toolkit includes two main automated reconnaissance playbooks:
+
+- **[rek-playbook-v1.sh](playbook/rek-playbook-v1.sh)**: Enhanced version with advanced features and better error handling
+- **[rek-playbook.sh](playbook/rek-playbook.sh)**: Standard reconnaissance pipeline
+
+### Quick Start with Playbooks
+
+#### Interactive Playbook Execution (Recommended)
+```bash
+# Run the interactive menu system
+python3 rek.py
+
+# Select option 1: Run Recon Playbook
+# Choose your preferred playbook version
+# Enter target domain and thread count
+# The system automatically installs dependencies and runs the playbook
+```
+
+The interactive mode provides:
+- Automatic dependency installation via `install-script.sh`
+- Playbook version selection
+- Real-time output streaming
+- Error handling and validation
+
+#### Direct Playbook Execution
+```bash
+# Make playbook executable
+chmod +x playbook/rek-playbook-v1.sh
+
+# Run basic reconnaissance
+./playbook/rek-playbook-v1.sh -d example.com
+
+# Run with custom configuration
+./playbook/rek-playbook-v1.sh -d example.com -t 200 --chaos-key YOUR_KEY --github-token YOUR_TOKEN
+
+# Skip specific phases
+./playbook/rek-playbook-v1.sh -d example.com --skip-portscan --skip-jsanalysis
+```
+
+#### Manual Installation
+```bash
+# Install all prerequisites and tools
+chmod +x playbook/install-script.sh
+./playbook/install-script.sh
+```
+
+## 📋 Playbook Architecture Wireframe
+
+### High-Level System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         REK PLAYBOOK SYSTEM ARCHITECTURE                        │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────┐
+│   User Input    │    │  Configuration  │    │  Tool Manager   │    │   Results   │
+│                 │    │    System       │    │                 │    │  Processor  │
+│ • Domain Name   │────│ • API Keys      │────│ • Dependency    │────│ • Markdown  │
+│ • CLI Arguments │    │ • Thread Count  │    │   Checking      │    │   Reports   │
+│ • Pipeline      │    │ • Skip Flags    │    │ • Installation  │    │ • CSV Files │
+│   Settings      │    │ • Tool Paths    │    │ • Version Check │    │ • Cleanup   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────┘
+         │                       │                       │                       │
+         └───────────────────────┼───────────────────────┼───────────────────────┘
+                                 │                       │
+         ┌───────────────────────▼───────────────────────▼───────────────────────┐
+         │                    CORE PLAYBOOK ENGINE                               │
+         │                                                                       │
+         │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │
+         │  │   Phase 1-2     │  │   Phase 3-4     │  │   Phase 5-8     │      │
+         │  │   Subdomain     │  │  Live Detection │  │   Content &     │      │
+         │  │   Discovery     │  │  & Port Scan    │  │  Vulnerability  │      │
+         │  └─────────────────┘  └─────────────────┘  └─────────────────┘      │
+         └───────────────────────────────────────────────────────────────────────┘
+                                        │
+         ┌──────────────────────────────▼──────────────────────────────────────┐
+         │                    EXTERNAL TOOL INTEGRATIONS                       │
+         │                                                                     │
+         │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐  │
+         │  │ Subdomain   │ │ HTTP/Port   │ │ Content     │ │ Analysis    │  │
+         │  │ Tools       │ │ Scanners    │ │ Discovery   │ │ Tools       │  │
+         │  │             │ │             │ │             │ │             │  │
+         │  │ • Subfinder │ │ • HTTPx     │ │ • Gospider  │ │ • GF        │  │
+         │  │ • Assetfind │ │ • Naabu     │ │ • Katana    │ │ • Cariddi   │  │
+         │  │ • Findomain │ │ • Puredns   │ │ • GAU       │ │ • GetJS     │  │
+         │  │ • Chaos     │ │             │ │             │ │             │  │
+         │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │
+         └─────────────────────────────────────────────────────────────────────┘
+```
+
+### Detailed Playbook Flow Architecture
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                           RECONNAISSANCE PIPELINE FLOW                            │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│   PHASE 1   │──▶│   PHASE 2   │──▶│   PHASE 3   │──▶│   PHASE 4   │──▶│   PHASE 5   │
+│  Subdomain  │   │  Subdomain  │   │    Live     │   │    Port     │   │  Content    │
+│ Enumeration │   │ Permutation │   │ Detection   │   │  Scanning   │   │ Discovery   │
+└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+       │                 │                 │                 │                 │
+       ▼                 ▼                 ▼                 ▼                 ▼
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│• Subfinder  │   │• DNSGen     │   │• HTTPx      │   │• Naabu      │   │• Gospider   │
+│• Assetfinder│   │• Gotator    │   │• Response   │   │• Port List  │   │• Katana     │
+│• Findomain  │   │• Goaltdns   │   │  Analysis   │   │• Service    │   │• GAU        │
+│• Chaos API  │   │• Permute    │   │• Tech Stack │   │  Detection  │   │• Sitemap    │
+│• GitHub API │   │• Puredns    │   │• Headers    │   │• HTTPx Port │   │• Robots.txt │
+│• GitLab API │   │• Resolve    │   │• Status     │   │  Probe      │   │• JS Files   │
+└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+
+         │                                                                        │
+         ▼                                                                        ▼
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│   PHASE 6   │──▶│   PHASE 7   │──▶│   PHASE 8   │──▶│  REPORTING  │──▶│   CLEANUP   │
+│Vulnerability│   │  Endpoint   │   │ JavaScript  │   │  & Summary  │   │& Archival   │
+│  Analysis   │   │Categorization│   │  Analysis   │   │  Generation │   │             │
+└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+       │                 │                 │                 │                 │
+       ▼                 ▼                 ▼                 ▼                 ▼
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│• GF Patterns│   │• File Types │   │• GetJS      │   │• Markdown   │   │• Archive    │
+│• XSS Filter │   │• JSON Files │   │• Secret     │   │  Report     │   │• Temp File  │
+│• SQLi Filter│   │• Config     │   │  Detection  │   │• Statistics │   │  Removal    │
+│• SSRF Filter│   │• Backup     │   │• Cariddi    │   │• Findings   │   │• Results    │
+│• LFI Filter │   │• PDF Files  │   │• API Keys   │   │• Next Steps │   │  Structure  │
+│• RCE Filter │   │• Log Files  │   │• Tokens     │   │• Timeline   │   │• Validation │
+└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+```
+
+### Tool Integration Matrix
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          TOOL INTEGRATION & DATA FLOW                           │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+    INPUT                 PROCESSING                      OUTPUT
+┌─────────────┐     ┌─────────────────────────┐     ┌─────────────────────┐
+│   Domain    │────▶│    Subdomain Tools      │────▶│  Raw Subdomains     │
+│ example.com │     │                         │     │                     │
+└─────────────┘     │ ┌─────────────────────┐ │     │ • subfinder.txt     │
+                    │ │   Subfinder         │ │     │ • assetfinder.txt   │
+                    │ │   • DNS Brute       │ │     │ • findomain.txt     │
+                    │ │   • CT Logs         │ │     │ • chaos.txt         │
+                    │ │   • Certificate     │ │     │ • github-subs.txt   │
+                    │ │     Transparency    │ │     │ • gitlab-subs.txt   │
+                    │ └─────────────────────┘ │     └─────────────────────┘
+                    │                         │               │
+                    │ ┌─────────────────────┐ │               ▼
+                    │ │   Assetfinder       │ │     ┌─────────────────────┐
+                    │ │   • API Sources     │ │     │   Deduplicated      │
+                    │ │   • Search Engines  │ │────▶│   Subdomain List    │
+                    │ └─────────────────────┘ │     │                     │
+                    │                         │     │ • sorted-subs.txt   │
+                    │ ┌─────────────────────┐ │     │ • 1000+ subdomains  │
+                    │ │   External APIs     │ │     └─────────────────────┘
+                    │ │   • Chaos Project   │ │               │
+                    │ │   • GitHub Commits  │ │               ▼
+                    │ │   • GitLab Repos    │ │     ┌─────────────────────┐
+                    │ └─────────────────────┘ │     │    Permutation      │
+                    └─────────────────────────┘     │     Generation      │
+                                                    │                     │
+                                                    │ • DNSGen            │
+                                                    │ • Gotator           │
+                                                    │ • Goaltdns          │
+                                                    │ • Custom Wordlists  │
+                                                    └─────────────────────┘
+                                                              │
+                                                              ▼
+                                                    ┌─────────────────────┐
+                                                    │   DNS Resolution    │
+                                                    │                     │
+                                                    │ • Puredns           │
+                                                    │ • Mass DNS          │
+                                                    │ • Custom Resolvers  │
+                                                    │ • Validation        │
+                                                    └─────────────────────┘
+                                                              │
+                                                              ▼
+                                                    ┌─────────────────────┐
+                                                    │   Live Detection    │
+                                                    │                     │
+                                                    │ • HTTPx Probing     │
+                                                    │ • Status Codes      │
+                                                    │ • Technology Stack  │
+                                                    │ • Response Headers  │
+                                                    └─────────────────────┘
+```
+
+### Configuration and Pipeline Management
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        CONFIGURATION & PIPELINE SYSTEM                          │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Configuration  │    │   Pipeline      │    │    Results      │
+│    Manager      │    │   Executor      │    │   Management    │
+│                 │    │                 │    │                 │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
+│ │ config.conf │ │    │ │ Phase Logic │ │    │ │ Timestamped │ │
+│ │             │ │    │ │             │ │    │ │ Directories │ │
+│ │ • API Keys  │ │◄──►│ │ • Execution │ │◄──►│ │             │ │
+│ │ • Threads   │ │    │ │   Control   │ │    │ │ • Subdomains│ │
+│ │ • Timeouts  │ │    │ │ • Skip Logic│ │    │ │ • Endpoints │ │
+│ │ • Paths     │ │    │ │ • Error     │ │    │ │ • JS Files  │ │
+│ └─────────────┘ │    │ │   Handling  │ │    │ │ • Vulns     │ │
+│                 │    │ └─────────────┘ │    │ └─────────────┘ │
+│ ┌─────────────┐ │    │                 │    │                 │
+│ │ Pipeline    │ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
+│ │ Storage     │ │    │ │ Progress    │ │    │ │   Report    │ │
+│ │             │ │    │ │ Tracking    │ │    │ │ Generation  │ │
+│ │ • Saved     │ │    │ │             │ │    │ │             │ │
+│ │   Settings  │ │    │ │ • Spinner   │ │    │ │ • Markdown  │ │
+│ │ • Domain    │ │    │ │ • Timers    │ │    │ │ • Summary   │ │
+│ │   History   │ │    │ │ • Logging   │ │    │ │ • Statistics│ │
+│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### Tool Installation Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        AUTOMATED INSTALLATION SYSTEM                            │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│    System       │    │   Language      │    │     Tool        │
+│   Detection     │    │   Runtimes      │    │  Installation   │
+│                 │    │                 │    │                 │
+│ • OS Type       │    │ • Go Lang       │    │ • GitHub Repos  │
+│ • Architecture  │────│ • Python 3      │────│ • Binary Downloads│
+│ • Package Mgr   │    │ • Node.js       │    │ • Compilation   │
+│ • Permissions   │    │ • Dependencies  │    │ • Path Setup    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+         ┌───────────────────────▼───────────────────────┐
+         │              VERIFICATION SYSTEM              │
+         │                                               │
+         │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+         │  │Tool Version │ │ Dependency  │ │ Integration │
+         │  │  Checking   │ │  Validation │ │   Testing   │
+         │  │             │ │             │ │             │
+         │  │ • Command   │ │ • Libraries │ │ • Tool      │
+         │  │   Available │ │ • Paths     │ │   Execution │
+         │  │ • Version   │ │ • Resolvers │ │ • Output    │
+         │  │   Compare   │ │ • Wordlists │ │   Parsing   │
+         │  └─────────────┘ └─────────────┘ └─────────────┘
+         └───────────────────────────────────────────────────┘
+```
+
+## 🛠️ Playbook Command Reference
+
+### Basic Usage
+```bash
+# Quick reconnaissance
+./playbook/rek-playbook-v1.sh -d target.com
+
+# Custom thread count
+./playbook/rek-playbook-v1.sh -d target.com -t 200
+
+# Use API keys for enhanced results
+./playbook/rek-playbook-v1.sh -d target.com \
+  --chaos-key YOUR_CHAOS_KEY \
+  --github-token YOUR_GITHUB_TOKEN \
+  --gitlab-token YOUR_GITLAB_TOKEN
+```
+
+### Phase Control
+```bash
+# Skip specific phases
+./playbook/rek-playbook-v1.sh -d target.com \
+  --skip-portscan \
+  --skip-jsanalysis \
+  --skip-vulnanalysis
+
+# Run only subdomain discovery
+./playbook/rek-playbook-v1.sh -d target.com \
+  --skip-permutation \
+  --skip-fingerprint \
+  --skip-portscan \
+  --skip-spider \
+  --skip-vulnanalysis \
+  --skip-jsanalysis
+```
+
+### Configuration Options
+```bash
+# Custom configuration file
+./playbook/rek-playbook-v1.sh -d target.com -c /path/to/config.conf
+
+# Custom output directory
+./playbook/rek-playbook-v1.sh -d target.com -o /path/to/results
+
+# Help and options
+./playbook/rek-playbook-v1.sh --help
+```
+
+## 📊 Output Structure
+
+### Directory Layout
+```
+results/
+└── target.com-20240101-120000/
+    ├── subdomains/
+    │   ├── sorted-subs.txt
+    │   ├── subs-alive.txt
+    │   ├── httpx-output.txt
+    │   └── subs-portscanned.txt
+    ├── endpoints/
+    │   ├── spider-output.txt
+    │   ├── json-endpoints.txt
+    │   └── backup-endpoints.txt
+    ├── js/
+    │   ├── getjs-output.txt
+    │   └── js-secrets.txt
+    ├── vulnerabilities/
+    │   ├── checkfor-xss.txt
+    │   ├── checkfor-sqli.txt
+    │   └── checkfor-ssrf.txt
+    └── recon-report.md
+```
+
+### Generated Report
+- **Markdown Summary**: Complete reconnaissance report with statistics
+- **CSV Exports**: Machine-readable data for further analysis
+- **Categorized Findings**: Organized by vulnerability type and file extension
+- **Next Steps**: Actionable recommendations for manual testing
+
+## 🔧 Additional REK Features
+
+### Core Modules
+- **Subdomain Enumeration**: Multi-source subdomain discovery using DNS Dumpster, Certificate Transparency, and DNS brute-forcing
+- **HTTP Status Checking**: Concurrent HTTP/HTTPS probing with detailed response analysis
+- **Directory Scanning**: Technology-aware directory and file discovery with screenshot capabilities
+- **Email Search**: GitHub-based email harvesting with breach detection via HIBP
+
+### Advanced Capabilities
+- **Technology Detection**: Automatic web technology identification for targeted scanning
+- **Parallel Processing**: Async/await implementation for maximum performance
+- **Screenshot Capture**: Automated visual documentation of discovered endpoints
+- **Breach Intelligence**: Integration with Have I Been Pwned API
+- **Custom Wordlists**: Domain-specific wordlist generation and global wordlist learning
+
+## 🚀 Installation
+
+### Prerequisites
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install Chrome/Chromium for screenshot functionality
+# Ubuntu/Debian:
+sudo apt-get install chromium-browser
+
+# macOS:
+brew install chromium
+```
+
+### Tool Dependencies
+The toolkit includes installation scripts for external tools:
+```bash
+# Run the installation script for your platform
+chmod +x playbook/install-script.sh
+./playbook/install-script.sh
+```
+
+## 📚 Technical Usage
+
+### Command Line Interface
+
+#### 1. Subdomain Enumeration
+```bash
+# Basic subdomain enumeration
+python3 rek.py -d example.com -o results.txt
+
+# Advanced enumeration with custom wordlist and GitHub token
+python3 rek.py -d example.com \
+  -w wordlists/subdomains-top5000.txt \
+  --token ghp_your_github_token \
+  -t 15 -c 100 --limit-commits 50
+```
+
+#### 2. HTTP Status Checking
+```bash
+# Check HTTP status for discovered subdomains
+python3 rek.py --input results.txt -o http_results.csv -t 10 -c 50
+```
+
+#### 3. Directory Scanning
+```bash
+# Scan live subdomains for directories and files
+python3 rek.py --input http_results.csv --status 200,301,403 \
+  --dir-wordlist wordlists/common-paths.txt \
+  --depth 5 -t 10 -c 30
+```
+
+#### 4. Email Search
+```bash
+# Search by domain
+python3 rek.py --email-domain example.com \
+  --token ghp_your_github_token \
+  --hibp-key your_hibp_api_key \
+  -o email_results.csv
+
+# Search by organization/username
+python3 rek.py --org microsoft \
+  --token ghp_your_github_token \
+  --limit-commits 100
+```
+
+### Interactive Mode
+
+#### Navigation Menu
+```bash
+python3 rek.py
+# Select option 3 for Navigation mode
+# Follow prompts for guided reconnaissance
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## ⚠️ Disclaimer
+
+This tool is for educational and authorized security testing purposes only. Users are responsible for ensuring they have proper authorization before testing any systems.
