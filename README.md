@@ -5,7 +5,7 @@
 
 REK is a comprehensive reconnaissance toolkit designed for ethical hackers and bug bounty hunters. It provides automated reconnaissance pipelines through sophisticated playbooks, along with modular subdomain enumeration, HTTP status checking, directory scanning, and email search capabilities.
 
-**Authors:** Jayresearcher, NarutoX, Ninza
+**Authors:** Jayresearcher, NarutoX, Ninja
 
 ## 🚀 Automated Playbook System
 
