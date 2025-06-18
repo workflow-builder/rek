@@ -890,7 +890,7 @@ class ReconTool:
   R   R EEEEE  K   K
 
   rek - Reconnaissance Tool
-  Authored by: Jayresearcher, NarutoX
+  Authored by: Jayresearcher, NarutoX , Ninza
   Bug Bounty Hunter © 2025 - For ethical hacking and security research only
   By scanning this domain, you agree that you own or have permission to perform this scanning or research.
   Empowering Ethical Hackers
