@@ -13,6 +13,7 @@ REK is a comprehensive reconnaissance toolkit designed for ethical hackers and b
 The REK toolkit includes two main automated reconnaissance playbooks:
 
 - **[rek-playbook-v1.sh](playbook/rek-playbook-v1.sh)**: Enhanced version with advanced features and better error handling
+- **[rek-playbook-v2.sh](playbook/rek-playbook-v2.sh)**: Enhanced URL crawler with better outcomes
 - **[rek-playbook.sh](playbook/rek-playbook.sh)**: Standard reconnaissance pipeline
 
 ### Quick Start with Playbooks
