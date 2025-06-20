@@ -2,8 +2,7 @@
 
 # ╔═════════════════════════════════════════════════════════════╗
 # ║  Recon Toolkit Installation Script (v2)                     ║
-# ║  Installs Katana, HTTPX, Nuclei, and dependencies for       ║
-# ║  Recon Playbook (v2)                                       ║
+# ║  Installs Katana, HTTPX, and Nuclei for Recon Playbook (v2)║
 # ╚═════════════════════════════════════════════════════════════╝
 
 # Terminal colors
@@ -67,25 +66,20 @@ install_basic_dependencies() {
                 echo -e "${YELLOW}[*] Installing Homebrew...${NC}"
                 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
             fi
-            echo -e "${YELLOW}[*] Installing base packages...${NC}"
-            brew install wget curl git coreutils
+            brew install wget curl git
             ;;
         debian)
-            echo -e "${YELLOW}[*] Updating package lists...${NC}"
             sudo apt update
-            echo -e "${YELLOW}[*] Installing base packages...${NC}"
-            sudo apt install -y wget curl git coreutils
+            sudo apt install -y wget curl git
             ;;
         rhel)
-            echo -e "${YELLOW}[*] Installing base packages...${NC}"
-            sudo yum install -y wget curl git coreutils
+            sudo yum install -y wget curl git
             ;;
         arch)
-            echo -e "${YELLOW}[*] Installing base packages...${NC}"
-            sudo pacman -Sy --noconfirm wget curl git coreutils
+            sudo pacman -Sy --noconfirm wget curl git
             ;;
         *)
-            echo -e "${YELLOW}[!] Please install wget, curl, git, and coreutils manually${NC}"
+            echo -e "${YELLOW}[!] Please install wget, curl, and git manually${NC}"
             ;;
     esac
     
@@ -181,11 +175,6 @@ verify_installation() {
     echo -e "${BLUE}[+] Verifying installation...${NC}"
     
     local tools=("katana" "httpx" "nuclei")
-    if [ "$OS" = "macos" ]; then
-        tools+=("gshuf")
-    else
-        tools+=("shuf")
-    fi
     
     printf "%-20s %-10s\n" "Tool" "Status"
     printf "%-20s %-10s\n" "--------------------" "----------"

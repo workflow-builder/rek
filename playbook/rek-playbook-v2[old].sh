@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # ╔═════════════════════════════════════════════════════════════╗
-# ║  Streamlined Recon Playbook for Efficient Crawling (v2)     ║
-# ║  Focused crawling pipeline using Katana, HTTPX, and Nuclei  ║
+# ║  Streamlined Recon Playbook for Quick Bug Bounty Recon (v2) ║
+# ║  Fast pipeline using Katana, HTTPX, and Nuclei              ║
 # ╚═════════════════════════════════════════════════════════════╝
 
 # Terminal colors
@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}"
 echo "╔═══════════════════════════════════════════════════════════════════════════╗"
 echo "║                                                                           ║"
-echo "║   Streamlined Recon Playbook (v2): Efficient Crawling with Katana,        ║"
+echo "║   Streamlined Recon Playbook (v2): Fast Bug Bounty Recon with Katana,     ║"
 echo "║   HTTPX, and Nuclei                                                       ║"
 echo "╚═══════════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
@@ -31,13 +31,6 @@ THREADS=20
 RATE_LIMIT=25
 RESULTS_DIR=""
 export PATH="$TOOLS_DIR:$HOME/go/bin:$PATH"
-
-# Determine shuf command (gshuf on macOS, shuf elsewhere)
-if command -v gshuf >/dev/null 2>&1; then
-    SHUF_CMD="gshuf"
-else
-    SHUF_CMD="shuf"
-fi
 
 # Create required directories
 setup_directories() {
@@ -70,7 +63,7 @@ check_prerequisites() {
     printf "%-20s %-10s\n" "--------------------" "----------"
     
     local all_tools_installed=true
-    local tools=("katana" "httpx" "nuclei" "$SHUF_CMD")
+    local tools=("katana" "httpx" "nuclei")
     
     for tool in "${tools[@]}"; do
         if command_exists "$tool"; then
@@ -130,8 +123,8 @@ get_target_url() {
 recon_pipeline() {
     echo -e "\n${BLUE}[+] Starting Recon Pipeline: Katana -> HTTPX -> Nuclei${NC}"
     
-    # Random User-Agent using shuf/gshuf
-    USER_AGENT=$($SHUF_CMD -n 1 -e \
+    # Random User-Agent for consistency
+    USER_AGENT=$(shuf -n 1 -e \
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
         "Mozilla/5.0 (X11; Linux x86_64)" \
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
