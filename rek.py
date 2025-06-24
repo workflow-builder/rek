@@ -25,7 +25,6 @@ import shlex
 import csv
 import threading
 from rek_email_search import EmailSearcher
-from rek_wordlist_generator import WordlistGenerator
 import subprocess
 import glob
 from tldextract import extract
@@ -1845,7 +1844,7 @@ EXAMPLES:
     # Email search by organization
     python3 rek.py --org microsoft --token ghp_xxx --limit-commits 100
 
-For more information, visit: https://github.com/workflow-builder/rek
+For more information, visit: https://github.com/your-repo/rek-toolkit
 """
     print(help_text)
 

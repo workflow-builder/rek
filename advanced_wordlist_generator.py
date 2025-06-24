@@ -10,7 +10,7 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
-class WordlistGenerator:
+class AdvancedWordlistGenerator:
     def __init__(self, silent: bool = False):
         self.silent = silent
         self.seclists_base_url = "https://raw.githubusercontent.com/danielmiessler/SecLists/master"
@@ -614,7 +614,7 @@ def main():
     print(colored("🔧 Advanced REK Wordlist Generator", "cyan", attrs=["bold"]))
     print(colored("Standalone wordlist generation tool", "cyan"))
     
-    generator = WordlistGenerator(silent=False)
+    generator = AdvancedWordlistGenerator(silent=False)
     generator.run_interactive()
 
 if __name__ == "__main__":
