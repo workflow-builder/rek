@@ -25,6 +25,7 @@ import shlex
 import csv
 import threading
 from rek_email_search import EmailSearcher
+from rek_wordlist_generator import WordlistGenerator
 import subprocess
 import glob
 from tldextract import extract
