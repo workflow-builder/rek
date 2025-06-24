@@ -47,6 +47,245 @@ class SubdomainScanner:
         self.session = requests.Session()
         retry_strategy = Retry(
             total=retries,
+
+class WordlistGenerator:
+    def __init__(self, silent: bool = False):
+        self.silent = silent
+        self.seclists_base_url = "https://raw.githubusercontent.com/danielmiessler/SecLists/master"
+        self.wordlists_dir = "wordlists"
+        self.common_wordlists = {
+            "subdomains": [
+                "Discovery/DNS/subdomains-top1million-5000.txt",
+                "Discovery/DNS/dns-Jhaddix.txt",
+                "Discovery/DNS/fierce-hostlist.txt"
+            ],
+            "directories": [
+                "Discovery/Web-Content/directory-list-2.3-medium.txt",
+                "Discovery/Web-Content/raft-medium-directories.txt",
+                "Discovery/Web-Content/common.txt"
+            ],
+            "files": [
+                "Discovery/Web-Content/raft-medium-files.txt",
+                "Discovery/Web-Content/common-extensions.txt",
+                "Discovery/Web-Content/web-extensions.txt"
+            ],
+            "parameters": [
+                "Discovery/Web-Content/burp-parameter-names.txt",
+                "Discovery/Web-Content/raft-medium-words.txt"
+            ],
+            "vulnerabilities": [
+                "Fuzzing/XSS/XSS-BruteLogic.txt",
+                "Fuzzing/SQLi/Generic-SQLi.txt",
+                "Fuzzing/LFI/LFI-gracefulsecurity-linux.txt"
+            ]
+        }
+
+    def create_wordlists_directory(self):
+        """Create wordlists directory if it doesn't exist."""
+        try:
+            os.makedirs(self.wordlists_dir, exist_ok=True)
+            if not self.silent:
+                logger.info(colored(f"Created/verified wordlists directory: {self.wordlists_dir}", "green"))
+        except Exception as e:
+            if not self.silent:
+                logger.error(colored(f"Error creating wordlists directory: {e}", "red"))
+
+    def download_wordlist(self, url: str, filename: str) -> bool:
+        """Download a wordlist from URL."""
+        try:
+            if not self.silent:
+                logger.info(colored(f"Downloading {filename}...", "yellow"))
+            
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            
+            filepath = os.path.join(self.wordlists_dir, filename)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(response.text)
+            
+            if not self.silent:
+                logger.info(colored(f"Successfully downloaded {filename}", "green"))
+            return True
+        except Exception as e:
+            if not self.silent:
+                logger.error(colored(f"Failed to download {filename}: {e}", "red"))
+            return False
+
+    def generate_custom_wordlist(self, domain: str, wordlist_type: str) -> str:
+        """Generate custom wordlist based on domain and type."""
+        custom_filename = f"custom-{wordlist_type}-{domain}.txt"
+        custom_filepath = os.path.join(self.wordlists_dir, custom_filename)
+        
+        try:
+            base_words = []
+            domain_parts = domain.replace('.', '-').split('-')
+            
+            if wordlist_type == "subdomains":
+                base_words = [
+                    'www', 'api', 'app', 'blog', 'dev', 'staging', 'test', 'mail', 'admin', 'login',
+                    'dashboard', 'secure', 'portal', 'vpn', 'ftp', 'support', 'shop', 'store', 'news',
+                    'events', 'forum', 'community', 'docs', 'help', 'status', 'beta', 'demo', 'internal',
+                    'old', 'new', 'web', 'mobile', 'cloud', 'data', 'auth', 'oauth', 'sso', 'my', 'user',
+                    'account', 'profile', 'settings', 'signup', 'gateway', 'proxy', 'cdn', 'cache', 'backup'
+                ]
+            elif wordlist_type == "directories":
+                base_words = [
+                    'admin', 'login', 'dashboard', 'api', 'config', 'backup', 'test', 'dev', 'staging',
+                    '.env', 'config.php', 'wp-admin', 'wp-login.php', 'wp-content', 'sites/default',
+                    'adminer.php', 'admin/login', 'api/v1', 'graphql', 'rest', 'static', 'media',
+                    'uploads', '.git', '.svn', 'debug', 'trace', 'swagger', 'docs', 'robots.txt',
+                    'sitemap.xml', 'web.config', 'cache', 'logs', 'tmp', 'assets', 'js', 'css', 'images'
+                ]
+            
+            # Add domain-specific variations
+            custom_words = set(base_words)
+            for part in domain_parts:
+                if len(part) > 2:
+                    for word in base_words[:20]:  # Use top 20 base words
+                        custom_words.add(f"{part}-{word}")
+                        custom_words.add(f"{word}-{part}")
+                        custom_words.add(f"{part}{word}")
+            
+            with open(custom_filepath, 'w') as f:
+                for word in sorted(custom_words):
+                    f.write(f"{word}\n")
+            
+            if not self.silent:
+                logger.info(colored(f"Generated custom wordlist: {custom_filename} ({len(custom_words)} entries)", "green"))
+            
+            return custom_filepath
+        except Exception as e:
+            if not self.silent:
+                logger.error(colored(f"Error generating custom wordlist: {e}", "red"))
+            return ""
+
+    def list_available_wordlists(self):
+        """List all available wordlists in the wordlists directory."""
+        try:
+            if not os.path.exists(self.wordlists_dir):
+                if not self.silent:
+                    logger.warning(colored("Wordlists directory not found", "yellow"))
+                return []
+            
+            wordlists = [f for f in os.listdir(self.wordlists_dir) if f.endswith('.txt')]
+            return sorted(wordlists)
+        except Exception as e:
+            if not self.silent:
+                logger.error(colored(f"Error listing wordlists: {e}", "red"))
+            return []
+
+    def run_interactive(self):
+        """Run interactive wordlist generator."""
+        if not self.silent:
+            print(colored("\n🔧 REK Wordlist Generator", "cyan", attrs=["bold"]))
+        
+        while True:
+            print(colored("\nWordlist Generator Options:", "cyan"))
+            print(colored("1. Download SecLists wordlists", "green"))
+            print(colored("2. Generate custom domain-based wordlist", "green"))
+            print(colored("3. List available wordlists", "green"))
+            print(colored("4. Exit", "red"))
+            
+            choice = input(colored("Select an option (1-4): ", "yellow")).strip()
+            
+            if choice == '1':
+                self.download_seclists()
+            elif choice == '2':
+                self.generate_custom_interactive()
+            elif choice == '3':
+                self.list_wordlists_interactive()
+            elif choice == '4':
+                break
+            else:
+                print(colored("Invalid choice. Please select 1-4.", "red"))
+
+    def download_seclists(self):
+        """Download popular SecLists wordlists."""
+        self.create_wordlists_directory()
+        
+        print(colored("\nSelect wordlist category:", "cyan"))
+        for i, category in enumerate(self.common_wordlists.keys(), 1):
+            print(colored(f"{i}. {category.title()}", "green"))
+        print(colored(f"{len(self.common_wordlists) + 1}. All categories", "green"))
+        
+        try:
+            choice = int(input(colored("Select category: ", "yellow")).strip())
+            categories = list(self.common_wordlists.keys())
+            
+            if choice == len(self.common_wordlists) + 1:
+                selected_categories = categories
+            elif 1 <= choice <= len(categories):
+                selected_categories = [categories[choice - 1]]
+            else:
+                print(colored("Invalid choice", "red"))
+                return
+            
+            for category in selected_categories:
+                if not self.silent:
+                    print(colored(f"\nDownloading {category} wordlists...", "yellow"))
+                
+                for wordlist_path in self.common_wordlists[category]:
+                    url = f"{self.seclists_base_url}/{wordlist_path}"
+                    filename = f"{category}-{os.path.basename(wordlist_path)}"
+                    self.download_wordlist(url, filename)
+                    time.sleep(1)  # Be respectful to GitHub
+            
+            if not self.silent:
+                print(colored("\nWordlist download completed!", "green"))
+                
+        except ValueError:
+            print(colored("Invalid input. Please enter a number.", "red"))
+        except Exception as e:
+            if not self.silent:
+                logger.error(colored(f"Error in download process: {e}", "red"))
+
+    def generate_custom_interactive(self):
+        """Interactive custom wordlist generation."""
+        domain = input(colored("Enter domain name (e.g., example.com): ", "yellow")).strip()
+        if not domain:
+            print(colored("Domain name is required", "red"))
+            return
+        
+        print(colored("\nSelect wordlist type:", "cyan"))
+        print(colored("1. Subdomains", "green"))
+        print(colored("2. Directories", "green"))
+        
+        try:
+            choice = int(input(colored("Select type (1-2): ", "yellow")).strip())
+            wordlist_type = "subdomains" if choice == 1 else "directories" if choice == 2 else None
+            
+            if not wordlist_type:
+                print(colored("Invalid choice", "red"))
+                return
+            
+            self.create_wordlists_directory()
+            filepath = self.generate_custom_wordlist(domain, wordlist_type)
+            
+            if filepath:
+                print(colored(f"Custom wordlist generated: {filepath}", "green"))
+            
+        except ValueError:
+            print(colored("Invalid input. Please enter a number.", "red"))
+
+    def list_wordlists_interactive(self):
+        """List available wordlists interactively."""
+        wordlists = self.list_available_wordlists()
+        
+        if not wordlists:
+            print(colored("No wordlists found in the wordlists directory", "yellow"))
+            return
+        
+        print(colored(f"\nAvailable wordlists ({len(wordlists)}):", "cyan"))
+        for i, wordlist in enumerate(wordlists, 1):
+            filepath = os.path.join(self.wordlists_dir, wordlist)
+            try:
+                with open(filepath, 'r') as f:
+                    line_count = sum(1 for _ in f)
+                print(colored(f"{i:2d}. {wordlist} ({line_count} entries)", "green"))
+            except:
+                print(colored(f"{i:2d}. {wordlist} (error reading file)", "yellow"))
+
+
             backoff_factor=1,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET", "POST"]
@@ -876,6 +1115,7 @@ class ReconTool:
         self.http_checker = HTTPStatusChecker(args.timeout, args.concurrency, args.silent)
         self.dir_scanner = DirectoryScanner(args.timeout, args.concurrency, args.depth, args.silent)
         self.email_searcher = EmailSearcher(args.timeout, args.silent)
+        self.wordlist_generator = WordlistGenerator(args.silent)
         self.silent = args.silent
         self.default_input_file = "http_results.csv"
 
@@ -902,11 +1142,13 @@ class ReconTool:
         """Display the initial REK menu with colors."""
         print(colored("REK Menu", "cyan", attrs=["bold"]))
         print(colored("1. Run Recon Playbook", "green"))
-        print(colored("2. Command Line", "green"))
-        print(colored("3. Navigation", "green"))
-        print(colored("4. REK Email Search", "green"))
-        print(colored("5. Exit", "red"))
-        return input(colored("Select an option (1-5): ", "yellow"))
+        print(colored("2. Subdomain Enumeration", "green"))
+        print(colored("3. HTTP Status Checking", "green"))
+        print(colored("4. Directory Scanning", "green"))
+        print(colored("5. REK Email Search", "green"))
+        print(colored("6. REK Wordlist Generator", "green"))
+        print(colored("7. Exit", "red"))
+        return input(colored("Select an option (1-7): ", "yellow"))
 
     def display_recon_menu(self, show_examples: bool = False):
         """Display the Recon Tool menu with colors."""
@@ -1495,25 +1737,15 @@ class ReconTool:
             if choice == '1':
                 self.run_playbook()
             elif choice == '2':
-                command = input(colored("Enter command (e.g., python3 rek-beta.py -d xyz.com -o results.txt): ", "yellow")).strip()
-                self.parse_and_run_command(command, choice)
+                args = self.prompt_subdomain_args()
+                self.run_subdomain_scan(args)
             elif choice == '3':
-                while True:
-                    recon_choice = self.display_recon_menu(show_examples=True)
-                    if recon_choice == '1':
-                        args = self.prompt_subdomain_args()
-                        self.run_subdomain_scan(args)
-                    elif recon_choice == '2':
-                        args = self.prompt_http_args()
-                        self.run_http_check(args)
-                    elif recon_choice == '3':
-                        args = self.prompt_directory_args()
-                        self.run_directory_scan(args)
-                    elif recon_choice == '4':
-                        break
-                    else:
-                        print(colored("Invalid option. Please select 1-4.", "red"))
+                args = self.prompt_http_args()
+                self.run_http_check(args)
             elif choice == '4':
+                args = self.prompt_directory_args()
+                self.run_directory_scan(args)
+            elif choice == '5':
                 while True:
                     email_choice = self.display_email_menu(show_examples=True)
                     if email_choice == '1':
@@ -1526,14 +1758,99 @@ class ReconTool:
                         break
                     else:
                         print(colored("Invalid option. Please select 1-3.", "red"))
-            elif choice == '5':
+            elif choice == '6':
+                self.wordlist_generator.run_interactive()
+            elif choice == '7':
                 print(colored("Exiting REK. Stay ethical!", "cyan"))
                 break
             else:
-                print(colored("Invalid option. Please select 1-5.", "red"))
+                print(colored("Invalid option. Please select 1-7.", "red"))
+
+def print_help():
+    """Print detailed help information for REK tool."""
+    help_text = """
+REK - Reconnaissance Toolkit
+
+USAGE:
+    python3 rek.py [OPTIONS]
+
+MENU OPTIONS:
+    1. Run Recon Playbook    - Execute automated reconnaissance playbooks
+    2. Subdomain Enumeration - Discover subdomains using multiple techniques
+    3. HTTP Status Checking  - Check HTTP status of discovered domains
+    4. Directory Scanning    - Scan for directories and files on web servers
+    5. REK Email Search      - Search for email addresses in GitHub repositories
+    6. REK Wordlist Generator- Generate and download wordlists for testing
+    7. Exit                  - Exit the application
+
+COMMAND LINE OPTIONS:
+
+Subdomain Enumeration:
+    -d, --domain DOMAIN         Target domain (e.g., example.com)
+    -w, --subdomain-wordlist    Custom wordlist for subdomain enumeration
+    -o, --output FILE          Output file (default: results.txt)
+    --token TOKEN              GitHub Personal Access Token
+    --limit-commits N          Max commits to scan per repo (default: 50)
+    --skip-forks              Skip forked repositories
+    -t, --timeout N           Request timeout in seconds (default: 10)
+    -c, --concurrency N       Maximum concurrent requests (default: 50)
+    -r, --retries N           Number of retries for failed requests (default: 3)
+
+HTTP Status Checking:
+    --input FILE              Input file with URLs to check
+    -o, --output FILE         Output CSV file (default: http_results.csv)
+    -t, --timeout N           Request timeout in seconds (default: 10)
+    -c, --concurrency N       Maximum concurrent requests (default: 50)
+
+Directory Scanning:
+    --input FILE              Input CSV file with URLs
+    --status CODES            Comma-separated status codes (e.g., 200,301,403)
+    --url URL                 Single URL to scan (alternative to --input)
+    --dir-wordlist FILE       Custom wordlist for directory scanning
+    --depth N                 Maximum crawling depth (1-10, default: 5)
+    -t, --timeout N           Request timeout in seconds (default: 10)
+    -c, --concurrency N       Maximum concurrent requests (default: 50)
+
+Email Search:
+    --email-domain DOMAIN     Domain for email search
+    --email-username USER     GitHub username for email search
+    --org ORGANIZATION        GitHub organization for email search
+    --token TOKEN             GitHub Personal Access Token
+    --hibp-key KEY            Have I Been Pwned API key
+    --limit-commits N         Max commits to scan per repo (default: 50)
+    --skip-forks              Skip forked repositories
+    -o, --output FILE         Output CSV file (default: email_results.csv)
+
+General Options:
+    --silent                  Run in silent mode (minimal output)
+    -h, --help               Show this help message
+
+EXAMPLES:
+    # Interactive mode
+    python3 rek.py
+
+    # Subdomain enumeration
+    python3 rek.py -d example.com -w wordlists/subdomains.txt --token ghp_xxx
+
+    # HTTP status checking
+    python3 rek.py --input results.txt -o http_results.csv -t 15 -c 100
+
+    # Directory scanning
+    python3 rek.py --input http_results.csv --status 200,301,403 --depth 3
+
+    # Email search by domain
+    python3 rek.py --email-domain example.com --token ghp_xxx --hibp-key xxx
+
+    # Email search by organization
+    python3 rek.py --org microsoft --token ghp_xxx --limit-commits 100
+
+For more information, visit: https://github.com/your-repo/rek-toolkit
+"""
+    print(help_text)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")
+    parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting", add_help=False)
+    parser.add_argument('-h', '--help', action='store_true', help="Show detailed help message")
     parser.add_argument('-d', '--domain', help="Domain for subdomain enumeration (e.g., xyz.com)")
     parser.add_argument('--email-domain', help="Domain for email search (e.g., xyz.com)")
     parser.add_argument('--email-username', help="GitHub username for email search (e.g., exampleuser)")
@@ -1555,5 +1872,10 @@ if __name__ == "__main__":
     parser.add_argument('--silent', action='store_true', help="Run in silent mode (only show main status messages)")
 
     args = parser.parse_args()
+    
+    if args.help:
+        print_help()
+        sys.exit(0)
+    
     recon_tool = ReconTool(args)
     recon_tool.run()

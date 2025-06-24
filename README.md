@@ -432,11 +432,158 @@ python3 rek.py --org microsoft \
 
 ### Interactive Mode
 
-#### Navigation Menu
+#### Main Menu Options
 ```bash
 python3 rek.py
-# Select option 3 for Navigation mode
-# Follow prompts for guided reconnaissance
+
+# Main Menu Options:
+# 1. Run Recon Playbook    - Execute automated reconnaissance playbooks
+# 2. Subdomain Enumeration - Discover subdomains using multiple techniques  
+# 3. HTTP Status Checking  - Check HTTP status of discovered domains
+# 4. Directory Scanning    - Scan for directories and files on web servers
+# 5. REK Email Search      - Search for email addresses in GitHub repositories
+# 6. REK Wordlist Generator- Generate and download wordlists for testing
+# 7. Exit                  - Exit the application
+```
+
+### Command Line Help
+```bash
+# Get detailed help information
+python3 rek.py --help
+
+# Or use the short form
+python3 rek.py -h
+```
+
+### Detailed Parameter Reference
+
+#### Subdomain Enumeration Parameters
+```bash
+python3 rek.py -d example.com [OPTIONS]
+
+Required:
+  -d, --domain DOMAIN         Target domain (e.g., example.com)
+
+Optional:
+  -w, --subdomain-wordlist    Custom wordlist for subdomain enumeration
+  -o, --output FILE          Output file (default: results.txt)
+  --token TOKEN              GitHub Personal Access Token for enhanced results
+  --limit-commits N          Max commits to scan per repo (default: 50)
+  --skip-forks              Skip forked repositories during GitHub search
+  -t, --timeout N           Request timeout in seconds (default: 10)
+  -c, --concurrency N       Maximum concurrent requests (default: 50)
+  -r, --retries N           Number of retries for failed requests (default: 3)
+  --silent                  Run in silent mode (minimal output)
+
+Example:
+python3 rek.py -d example.com -w wordlists/subdomains.txt --token ghp_xxx -t 15 -c 100
+```
+
+#### HTTP Status Checking Parameters
+```bash
+python3 rek.py --input FILE [OPTIONS]
+
+Required:
+  --input FILE              Input file with URLs to check
+
+Optional:
+  -o, --output FILE         Output CSV file (default: http_results.csv)
+  -t, --timeout N           Request timeout in seconds (default: 10)
+  -c, --concurrency N       Maximum concurrent requests (default: 50)
+  --silent                  Run in silent mode (minimal output)
+
+Example:
+python3 rek.py --input results.txt -o http_results.csv -t 15 -c 100
+```
+
+#### Directory Scanning Parameters
+```bash
+python3 rek.py --input FILE --status CODES [OPTIONS]
+# OR
+python3 rek.py --url URL [OPTIONS]
+
+Required (Option 1):
+  --input FILE              Input CSV file with URLs and status codes
+  --status CODES            Comma-separated status codes (e.g., 200,301,403)
+
+Required (Option 2):
+  --url URL                 Single URL to scan directly
+
+Optional:
+  --dir-wordlist FILE       Custom wordlist for directory scanning
+  --depth N                 Maximum crawling depth (1-10, default: 5)
+  -t, --timeout N           Request timeout in seconds (default: 10)
+  -c, --concurrency N       Maximum concurrent requests (default: 50)
+  --silent                  Run in silent mode (minimal output)
+
+Examples:
+python3 rek.py --input http_results.csv --status 200,301,403 --depth 3
+python3 rek.py --url https://example.com --dir-wordlist wordlists/common.txt
+```
+
+#### Email Search Parameters
+```bash
+# Search by domain
+python3 rek.py --email-domain DOMAIN [OPTIONS]
+
+# Search by GitHub username
+python3 rek.py --email-username USERNAME [OPTIONS]
+
+# Search by GitHub organization
+python3 rek.py --org ORGANIZATION [OPTIONS]
+
+Required (choose one):
+  --email-domain DOMAIN     Domain for email search
+  --email-username USER     GitHub username for email search
+  --org ORGANIZATION        GitHub organization for email search
+
+Optional:
+  --token TOKEN             GitHub Personal Access Token (recommended)
+  --hibp-key KEY            Have I Been Pwned API key for breach checking
+  --limit-commits N         Max commits to scan per repo (default: 50)
+  --skip-forks              Skip forked repositories during search
+  -o, --output FILE         Output CSV file (default: email_results.csv)
+  -t, --timeout N           Request timeout in seconds (default: 10)
+  --silent                  Run in silent mode (minimal output)
+
+Examples:
+python3 rek.py --email-domain example.com --token ghp_xxx --hibp-key xxx
+python3 rek.py --org microsoft --token ghp_xxx --limit-commits 100
+python3 rek.py --email-username johndoe --token ghp_xxx --skip-forks
+```
+
+#### REK Wordlist Generator
+The wordlist generator is available through the interactive menu (option 6) and provides:
+
+**Features:**
+- Download SecLists wordlists by category
+- Generate domain-specific custom wordlists
+- Merge multiple wordlists with deduplication
+- List and manage existing wordlists
+- Clean up old or duplicate wordlists
+
+**Categories Available:**
+- Subdomains (basic and advanced)
+- Directories (basic and advanced) 
+- Files (basic and advanced)
+- Parameters (basic and advanced)
+- Vulnerabilities (XSS, SQLi, LFI, RCE)
+- API endpoints and methods
+
+**Technology-Specific Wordlists:**
+- WordPress, Drupal, Joomla
+- Laravel, Django, Node.js
+- Apache, Nginx, IIS
+- PHP, Python, Java
+
+**Usage:**
+```bash
+# Access through interactive menu
+python3 rek.py
+# Select option 6: REK Wordlist Generator
+
+# Or run the standalone generator
+python3 advanced_wordlist_generator.py
 ```
 
 ## 🤝 Contributing
