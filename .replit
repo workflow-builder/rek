@@ -2,3 +2,4 @@ modules = ["python-3.12", "bash"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["cacert", "geckodriver", "glibcLocales", "xcodebuild", "zlib"]
