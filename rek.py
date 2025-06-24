@@ -25,6 +25,7 @@ import shlex
 import csv
 import threading
 from rek_email_search import EmailSearcher
+from rek_wordlist_generator import REKWordlistGenerator
 import subprocess
 import glob
 from tldextract import extract
@@ -267,242 +268,23 @@ class SubdomainScanner:
         if not self.silent:
             logger.info(colored("Completed email search in parallel", "green"))
 
-class WordlistGenerator:
+class WordlistGeneratorWrapper:
     def __init__(self, silent: bool = False):
         self.silent = silent
-        self.seclists_base_url = "https://raw.githubusercontent.com/danielmiessler/SecLists/master"
-        self.wordlists_dir = "wordlists"
-        self.common_wordlists = {
-            "subdomains": [
-                "Discovery/DNS/subdomains-top1million-5000.txt",
-                "Discovery/DNS/dns-Jhaddix.txt",
-                "Discovery/DNS/fierce-hostlist.txt"
-            ],
-            "directories": [
-                "Discovery/Web-Content/directory-list-2.3-medium.txt",
-                "Discovery/Web-Content/raft-medium-directories.txt",
-                "Discovery/Web-Content/common.txt"
-            ],
-            "files": [
-                "Discovery/Web-Content/raft-medium-files.txt",
-                "Discovery/Web-Content/common-extensions.txt",
-                "Discovery/Web-Content/web-extensions.txt"
-            ],
-            "parameters": [
-                "Discovery/Web-Content/burp-parameter-names.txt",
-                "Discovery/Web-Content/raft-medium-words.txt"
-            ],
-            "vulnerabilities": [
-                "Fuzzing/XSS/XSS-BruteLogic.txt",
-                "Fuzzing/SQLi/Generic-SQLi.txt",
-                "Fuzzing/LFI/LFI-gracefulsecurity-linux.txt"
-            ]
-        }
-
-    def create_wordlists_directory(self):
-        """Create wordlists directory if it doesn't exist."""
-        try:
-            os.makedirs(self.wordlists_dir, exist_ok=True)
-            if not self.silent:
-                logger.info(colored(f"Created/verified wordlists directory: {self.wordlists_dir}", "green"))
-        except Exception as e:
-            if not self.silent:
-                logger.error(colored(f"Error creating wordlists directory: {e}", "red"))
-
-    def download_wordlist(self, url: str, filename: str) -> bool:
-        """Download a wordlist from URL."""
-        try:
-            if not self.silent:
-                logger.info(colored(f"Downloading {filename}...", "yellow"))
-
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-
-            filepath = os.path.join(self.wordlists_dir, filename)
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(response.text)
-
-            if not self.silent:
-                logger.info(colored(f"Successfully downloaded {filename}", "green"))
-            return True
-        except Exception as e:
-            if not self.silent:
-                logger.error(colored(f"Failed to download {filename}: {e}", "red"))
-            return False
-
-    def generate_custom_wordlist(self, domain: str, wordlist_type: str) -> str:
-        """Generate custom wordlist based on domain and type."""
-        custom_filename = f"custom-{wordlist_type}-{domain}.txt"
-        custom_filepath = os.path.join(self.wordlists_dir, custom_filename)
-
-        try:
-            base_words = []
-            domain_parts = domain.replace('.', '-').split('-')
-
-            if wordlist_type == "subdomains":
-                base_words = [
-                    'www', 'api', 'app', 'blog', 'dev', 'staging', 'test', 'mail', 'admin', 'login',
-                    'dashboard', 'secure', 'portal', 'vpn', 'ftp', 'support', 'shop', 'store', 'news',
-                    'events', 'forum', 'community', 'docs', 'help', 'status', 'beta', 'demo', 'internal',
-                    'old', 'new', 'web', 'mobile', 'cloud', 'data', 'auth', 'oauth', 'sso', 'my', 'user',
-                    'account', 'profile', 'settings', 'signup', 'gateway', 'proxy', 'cdn', 'cache', 'backup'
-                ]
-            elif wordlist_type == "directories":
-                base_words = [
-                    'admin', 'login', 'dashboard', 'api', 'config', 'backup', 'test', 'dev', 'staging',
-                    '.env', 'config.php', 'wp-admin', 'wp-login.php', 'wp-content', 'sites/default',
-                    'adminer.php', 'admin/login', 'api/v1', 'graphql', 'rest', 'static', 'media',
-                    'uploads', '.git', '.svn', 'debug', 'trace', 'swagger', 'docs', 'robots.txt',
-                    'sitemap.xml', 'web.config', 'cache', 'logs', 'tmp', 'assets', 'js', 'css', 'images'
-                ]
-
-            # Add domain-specific variations
-            custom_words = set(base_words)
-            for part in domain_parts:
-                if len(part) > 2:
-                    for word in base_words[:20]:  # Use top 20 base words
-                        custom_words.add(f"{part}-{word}")
-                        custom_words.add(f"{word}-{part}")
-                        custom_words.add(f"{part}{word}")
-
-            with open(custom_filepath, 'w') as f:
-                for word in sorted(custom_words):
-                    f.write(f"{word}\n")
-
-            if not self.silent:
-                logger.info(colored(f"Generated custom wordlist: {custom_filename} ({len(custom_words)} entries)", "green"))
-
-            return custom_filepath
-        except Exception as e:
-            if not self.silent:
-                logger.error(colored(f"Error generating custom wordlist: {e}", "red"))
-            return ""
-
-    def list_available_wordlists(self):
-        """List all available wordlists in the wordlists directory."""
-        try:
-            if not os.path.exists(self.wordlists_dir):
-                if not self.silent:
-                    logger.warning(colored("Wordlists directory not found", "yellow"))
-                return []
-
-            wordlists = [f for f in os.listdir(self.wordlists_dir) if f.endswith('.txt')]
-            return sorted(wordlists)
-        except Exception as e:
-            if not self.silent:
-                logger.error(colored(f"Error listing wordlists: {e}", "red"))
-            return []
+        self.domain = None
 
     def run_interactive(self):
-        """Run interactive wordlist generator."""
+        """Run interactive wordlist generator using REK Wordlist Generator."""
         if not self.silent:
             print(colored("\n🔧 REK Wordlist Generator", "cyan", attrs=["bold"]))
-
-        while True:
-            print(colored("\nWordlist Generator Options:", "cyan"))
-            print(colored("1. Download SecLists wordlists", "green"))
-            print(colored("2. Generate custom domain-based wordlist", "green"))
-            print(colored("3. List available wordlists", "green"))
-            print(colored("4. Exit", "red"))
-
-            choice = input(colored("Select an option (1-4): ", "yellow")).strip()
-
-            if choice == '1':
-                self.download_seclists()
-            elif choice == '2':
-                self.generate_custom_interactive()
-            elif choice == '3':
-                self.list_wordlists_interactive()
-            elif choice == '4':
-                break
-            else:
-                print(colored("Invalid choice. Please select 1-4.", "red"))
-
-    def download_seclists(self):
-        """Download popular SecLists wordlists."""
-        self.create_wordlists_directory()
-
-        print(colored("\nSelect wordlist category:", "cyan"))
-        for i, category in enumerate(self.common_wordlists.keys(), 1):
-            print(colored(f"{i}. {category.title()}", "green"))
-        print(colored(f"{len(self.common_wordlists) + 1}. All categories", "green"))
-
-        try:
-            choice = int(input(colored("Select category: ", "yellow")).strip())
-            categories = list(self.common_wordlists.keys())
-
-            if choice == len(self.common_wordlists) + 1:
-                selected_categories = categories
-            elif 1 <= choice <= len(categories):
-                selected_categories = [categories[choice - 1]]
-            else:
-                print(colored("Invalid choice", "red"))
-                return
-
-            for category in selected_categories:
-                if not self.silent:
-                    print(colored(f"\nDownloading {category} wordlists...", "yellow"))
-
-                for wordlist_path in self.common_wordlists[category]:
-                    url = f"{self.seclists_base_url}/{wordlist_path}"
-                    filename = f"{category}-{os.path.basename(wordlist_path)}"
-                    self.download_wordlist(url, filename)
-                    time.sleep(1)  # Be respectful to GitHub
-
-            if not self.silent:
-                print(colored("\nWordlist download completed!", "green"))
-
-        except ValueError:
-            print(colored("Invalid input. Please enter a number.", "red"))
-        except Exception as e:
-            if not self.silent:
-                logger.error(colored(f"Error in download process: {e}", "red"))
-
-    def generate_custom_interactive(self):
-        """Interactive custom wordlist generation."""
-        domain = input(colored("Enter domain name (e.g., example.com): ", "yellow")).strip()
-        if not domain:
-            print(colored("Domain name is required", "red"))
-            return
-
-        print(colored("\nSelect wordlist type:", "cyan"))
-        print(colored("1. Subdomains", "green"))
-        print(colored("2. Directories", "green"))
-
-        try:
-            choice = int(input(colored("Select type (1-2): ", "yellow")).strip())
-            wordlist_type = "subdomains" if choice == 1 else "directories" if choice == 2 else None
-
-            if not wordlist_type:
-                print(colored("Invalid choice", "red"))
-                return
-
-            self.create_wordlists_directory()
-            filepath = self.generate_custom_wordlist(domain, wordlist_type)
-
-            if filepath:
-                print(colored(f"Custom wordlist generated: {filepath}", "green"))
-
-        except ValueError:
-            print(colored("Invalid input. Please enter a number.", "red"))
-
-    def list_wordlists_interactive(self):
-        """List available wordlists interactively."""
-        wordlists = self.list_available_wordlists()
-
-        if not wordlists:
-            print(colored("No wordlists found in the wordlists directory", "yellow"))
-            return
-
-        print(colored(f"\nAvailable wordlists ({len(wordlists)}):", "cyan"))
-        for i, wordlist in enumerate(wordlists, 1):
-            filepath = os.path.join(self.wordlists_dir, wordlist)
-            try:
-                with open(filepath, 'r') as f:
-                    line_count = sum(1 for _ in f)
-                print(colored(f"{i:2d}. {wordlist} ({line_count} entries)", "green"))
-            except:
-                print(colored(f"{i:2d}. {wordlist} (error reading file)", "yellow"))
+        
+        # Ask for domain first to create domain-specific folder
+        domain = input(colored("Enter domain name for wordlist generation (e.g., example.com): ", "yellow")).strip()
+        if domain:
+            self.domain = domain
+            
+        generator = REKWordlistGenerator(silent=self.silent, domain=self.domain)
+        generator.run_interactive()
 
 
 class HTTPStatusChecker:
@@ -1114,7 +896,7 @@ class ReconTool:
         self.http_checker = HTTPStatusChecker(args.timeout, args.concurrency, args.silent)
         self.dir_scanner = DirectoryScanner(args.timeout, args.concurrency, args.depth, args.silent)
         self.email_searcher = EmailSearcher(args.timeout, args.silent)
-        self.wordlist_generator = WordlistGenerator(args.silent)
+        self.wordlist_generator = WordlistGeneratorWrapper(args.silent)
         self.silent = args.silent
         self.default_input_file = "http_results.csv"
 
