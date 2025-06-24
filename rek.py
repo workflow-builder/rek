@@ -1845,7 +1845,7 @@ EXAMPLES:
     # Email search by organization
     python3 rek.py --org microsoft --token ghp_xxx --limit-commits 100
 
-For more information, visit: https://github.com/your-repo/rek-toolkit
+For more information, visit: https://github.com/workflow-builder/rek
 """
     print(help_text)
 
