@@ -1283,9 +1283,8 @@ class ReconTool:
         class Args:
             pass
         args = Args()
-        ```python
-# Corrected the syntax error in the WordlistGenerator class definition.
-    args.input = input_file if input_file else None
+        # Corrected the syntax error in the WordlistGenerator class definition.
+        args.input = input_file if input_file else None
         args.status = status if status else None
         args.url = url if url else None
         args.dir_wordlist = wordlist
