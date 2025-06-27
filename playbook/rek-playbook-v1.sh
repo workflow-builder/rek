@@ -126,7 +126,7 @@ install_tools() {
                     gotator) go install -v github.com/Josue87/gotator@latest ;;
                     puredns) go install -v github.com/d3mondev/puredns/v2@latest ;;
                     gf) go install -v github.com/tomnomnom/gf@latest ;;
-                    ripgen) go install -v github.com/hueristiq/ripgen@latest ;;
+                    ripgen) go install -v github.com/resyncgg/ripgen@latest ;;
                 esac
             fi
         done

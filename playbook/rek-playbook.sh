@@ -177,8 +177,8 @@ install_tools() {
         fi
         
         if ! go_tool_exists ripgen; then
-            echo -e "${YELLOW}[*] Skipping ripgen due to package issues...${NC}"
-            # go install -v github.com/resyncgg/ripgen/cmd/ripgen@latest
+            echo -e "${YELLOW}[*] Installing ripgen...${NC}"
+            go install -v github.com/resyncgg/ripgen@latest
         fi
         
         if ! go_tool_exists puredns; then
@@ -413,8 +413,12 @@ subdomain_permutation() {
         echo -e "${RED}[!] gotator not found, skipping...${NC}"
     fi
     
-    echo -e "${YELLOW}[*] Skipping ripgen due to package issues...${NC}"
-    # cat sorted-subdomains.txt | ripgen > output-ripgen.txt
+    echo -e "${YELLOW}[*] Running ripgen...${NC}"
+    if command_exists ripgen; then
+        cat sorted-subdomains.txt | ripgen > output-ripgen.txt || echo -e "${RED}[!] ripgen failed${NC}"
+    else
+        echo -e "${RED}[!] ripgen not found, skipping...${NC}"
+    fi
     
     echo -e "${YELLOW}[*] Merging permutation results...${NC}"
     cat output*.txt | sort -u > output.txt
