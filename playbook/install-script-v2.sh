@@ -145,8 +145,12 @@ install_pd_tools() {
     
     for tool_entry in "${tools[@]}"; do
         IFS=':' read -r tool repo <<< "$tool_entry"
-        echo -e "${YELLOW}[*] Installing $tool...${NC}"
-        go install -v "$repo" || echo -e "${RED}[!] Failed to install $tool${NC}"
+        if command -v "$tool" &> /dev/null; then
+            echo -e "${GREEN}[✓] $tool is already installed${NC}"
+        else
+            echo -e "${YELLOW}[*] Installing $tool...${NC}"
+            go install -v "$repo" || echo -e "${RED}[!] Failed to install $tool${NC}"
+        fi
     done
     
     echo -e "${GREEN}[✓] ProjectDiscovery tools installed${NC}"
