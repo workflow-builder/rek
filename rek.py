@@ -638,7 +638,8 @@ class DirectoryScanner:
         wordlist = []
         try:
             wappalyzer = Wappalyzer.latest()
-            webpage = WebPage.new_from_url(url, headers={'User-Agent': 'Mozilla/5.0'})
+            # Fix: Remove headers parameter as it's not supported in newer versions
+            webpage = WebPage.new_from_url(url)
             techs = wappalyzer.analyze_with_versions_and_categories(webpage)
             if not self.silent:
                 logger.info(colored(f"Detected technologies: {techs.keys()}", "green"))

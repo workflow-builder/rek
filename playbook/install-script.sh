@@ -190,6 +190,11 @@ install_python_tools() {
     echo -e "${GREEN}[✓] Python tools installed${NC}"
 }
 
+# Function to check if a tool is installed
+tool_installed() {
+    command -v "$1" &> /dev/null
+}
+
 # Function to install Go tools
 install_go_tools() {
     echo -e "${BLUE}[+] Installing Go tools...${NC}"
@@ -203,60 +208,120 @@ install_go_tools() {
     # Set PATH for Go binaries
     export PATH=$PATH:$HOME/go/bin:$TOOLS_DIR
     
-    # Install tools
-    echo -e "${YELLOW}[*] Installing subfinder...${NC}"
-    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+    # Install tools with existence checks
+    if tool_installed "subfinder"; then
+        echo -e "${GREEN}[✓] subfinder is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing subfinder...${NC}"
+        go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing assetfinder...${NC}"
-    go install -v github.com/tomnomnom/assetfinder@latest
+    if tool_installed "assetfinder"; then
+        echo -e "${GREEN}[✓] assetfinder is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing assetfinder...${NC}"
+        go install -v github.com/tomnomnom/assetfinder@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing httpx...${NC}"
-    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+    if tool_installed "httpx"; then
+        echo -e "${GREEN}[✓] httpx is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing httpx...${NC}"
+        go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing naabu...${NC}"
-    go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+    if tool_installed "naabu"; then
+        echo -e "${GREEN}[✓] naabu is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing naabu...${NC}"
+        go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing chaos client...${NC}"
-    go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
+    if tool_installed "chaos"; then
+        echo -e "${GREEN}[✓] chaos client is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing chaos client...${NC}"
+        go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing gospider...${NC}"
-    go install -v github.com/jaeles-project/gospider@latest
+    if tool_installed "gospider"; then
+        echo -e "${GREEN}[✓] gospider is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing gospider...${NC}"
+        go install -v github.com/jaeles-project/gospider@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing katana...${NC}"
-    go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+    if tool_installed "katana"; then
+        echo -e "${GREEN}[✓] katana is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing katana...${NC}"
+        go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing gau...${NC}"
-    go install -v github.com/lc/gau/v2/cmd/gau@latest
+    if tool_installed "gau"; then
+        echo -e "${GREEN}[✓] gau is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing gau...${NC}"
+        go install -v github.com/lc/gau/v2/cmd/gau@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing getJS...${NC}"
-    go install -v github.com/003random/getJS@latest
+    if tool_installed "getJS"; then
+        echo -e "${GREEN}[✓] getJS is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing getJS...${NC}"
+        go install -v github.com/003random/getJS@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing cariddi...${NC}"
-    go install -v github.com/edoardottt/cariddi/cmd/cariddi@latest
+    if tool_installed "cariddi"; then
+        echo -e "${GREEN}[✓] cariddi is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing cariddi...${NC}"
+        go install -v github.com/edoardottt/cariddi/cmd/cariddi@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing goaltdns...${NC}"
-    go install -v github.com/subfinder/goaltdns@latest
+    if tool_installed "goaltdns"; then
+        echo -e "${GREEN}[✓] goaltdns is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing goaltdns...${NC}"
+        go install -v github.com/subfinder/goaltdns@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing gotator...${NC}"
-    go install -v github.com/Josue87/gotator@latest
+    if tool_installed "gotator"; then
+        echo -e "${GREEN}[✓] gotator is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing gotator...${NC}"
+        go install -v github.com/Josue87/gotator@latest
+    fi
     
-    echo -e "${YELLOW}[*] Skipping ripgen due to package issues...${NC}"
-    # go install -v github.com/resyncgg/ripgen/cmd/ripgen@latest
+    if tool_installed "ripgen"; then
+        echo -e "${GREEN}[✓] ripgen is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing ripgen...${NC}"
+        go install -v github.com/resyncgg/ripgen/cmd/ripgen@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing puredns...${NC}"
-    go install -v github.com/d3mondev/puredns/v2@latest
+    if tool_installed "puredns"; then
+        echo -e "${GREEN}[✓] puredns is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing puredns...${NC}"
+        go install -v github.com/d3mondev/puredns/v2@latest
+    fi
     
-    echo -e "${YELLOW}[*] Installing gf...${NC}"
-    go install -v github.com/tomnomnom/gf@latest
+    if tool_installed "gf"; then
+        echo -e "${GREEN}[✓] gf is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing gf...${NC}"
+        go install -v github.com/tomnomnom/gf@latest
+    fi
     
-    echo -e "${GREEN}[✓] Go tools installed successfully${NC}"
+    echo -e "${GREEN}[✓] Go tools installation check completed${NC}"
 }
 
 # Function to install Findomain
 install_findomain() {
     echo -e "${BLUE}[+] Installing Findomain...${NC}"
     
-    if command -v findomain &> /dev/null; then
+    if tool_installed "findomain" || [ -f "$TOOLS_DIR/findomain" ]; then
         echo -e "${GREEN}[✓] Findomain is already installed${NC}"
     else
         case $OS in
@@ -317,8 +382,10 @@ install_code_platform_tools() {
     echo -e "${BLUE}[+] Installing GitHub and GitLab subdomain tools...${NC}"
     
     # Install github-subdomains
-    echo -e "${YELLOW}[*] Installing github-subdomains...${NC}"
-    if ! command -v github-subdomains &> /dev/null; then
+    if tool_installed "github-subdomains" || [ -f "$TOOLS_DIR/github-subdomains" ]; then
+        echo -e "${GREEN}[✓] github-subdomains is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing github-subdomains...${NC}"
         if [ -d "$TOOLS_DIR/github-subdomains" ]; then
             echo -e "${YELLOW}[!] $TOOLS_DIR/github-subdomains already exists. Updating...${NC}"
             git -C "$TOOLS_DIR/github-subdomains" pull
@@ -332,8 +399,10 @@ install_code_platform_tools() {
     fi
     
     # Install gitlab-subdomains
-    echo -e "${YELLOW}[*] Installing gitlab-subdomains...${NC}"
-    if ! command -v gitlab-subdomains &> /dev/null; then
+    if tool_installed "gitlab-subdomains" || [ -f "$TOOLS_DIR/gitlab-subdomains" ]; then
+        echo -e "${GREEN}[✓] gitlab-subdomains is already installed${NC}"
+    else
+        echo -e "${YELLOW}[*] Installing gitlab-subdomains...${NC}"
         if [ -d "$TOOLS_DIR/gitlab-subdomains" ]; then
             echo -e "${YELLOW}[!] $TOOLS_DIR/gitlab-subdomains already exists. Updating...${NC}"
             git -C "$TOOLS_DIR/gitlab-subdomains" pull
@@ -346,7 +415,7 @@ install_code_platform_tools() {
         cd - > /dev/null
     fi
     
-    echo -e "${GREEN}[✓] GitHub and GitLab tools installed${NC}"
+    echo -e "${GREEN}[✓] GitHub and GitLab tools installation check completed${NC}"
 }
 
 # Function to download DNS resolvers
