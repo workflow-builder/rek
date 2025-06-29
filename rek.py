@@ -275,16 +275,24 @@ class WordlistGeneratorWrapper:
 
     def run_interactive(self):
         """Run interactive wordlist generator using REK Wordlist Generator."""
-        if not self.silent:
-            print(colored("\n🔧 REK Wordlist Generator", "cyan", attrs=["bold"]))
-        
-        # Ask for domain first to create domain-specific folder
-        domain = input(colored("Enter domain name for wordlist generation (e.g., example.com): ", "yellow")).strip()
-        if domain:
-            self.domain = domain
+        try:
+            from rek_wordlist_generator import REKWordlistGenerator
             
-        generator = REKWordlistGenerator(silent=self.silent, domain=self.domain)
-        generator.run_interactive()
+            if not self.silent:
+                print(colored("\n🔧 REK Wordlist Generator", "cyan", attrs=["bold"]))
+            
+            # Ask for domain first to create domain-specific folder
+            domain = input(colored("Enter domain name for wordlist generation (e.g., example.com): ", "yellow")).strip()
+            if domain:
+                self.domain = domain
+                
+            generator = REKWordlistGenerator(silent=self.silent, domain=self.domain)
+            generator.run_interactive()
+            
+        except ImportError as e:
+            print(colored(f"[!] Error importing REK Wordlist Generator: {e}", "red"))
+        except Exception as e:
+            print(colored(f"[!] Error running wordlist generator: {e}", "red"))e()
 
 
 class HTTPStatusChecker:
