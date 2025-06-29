@@ -28,6 +28,9 @@ class REKWordlistGenerator:
         self.domain = domain
         self.seclists_base_url = "https://raw.githubusercontent.com/danielmiessler/SecLists/master"
         
+        # Local wordlists directory
+        self.local_wordlists_dir = "wordlists"
+        
         if domain:
             self.wordlists_dir = f"{domain}-wordlists"
             self.output_dir = f"{domain}-wordlists/generated"
@@ -45,28 +48,84 @@ class REKWordlistGenerator:
         self.subdomain_wordlist = set()
         self.directory_wordlist = set()
         
-        # Technology-specific patterns
-        self.tech_patterns = {
-            'wordpress': ['wp-admin', 'wp-login.php', 'wp-content', 'wp-includes', 'xmlrpc.php', 'wp-config.php', 'wp-load.php'],
-            'drupal': ['sites/default', 'modules', 'themes', 'core', 'install.php', 'settings.php'],
-            'php': ['phpinfo.php', 'admin.php', 'config.php', 'info.php', 'install.php', 'setup.php'],
-            'apache': ['server-status', 'server-info', '.htaccess', 'access_log'],
-            'nginx': ['nginx_status', 'stub_status', 'error.log'],
-            'django': ['admin', 'api', 'static', 'media', 'debug', 'urls.py', 'settings.py'],
-            'laravel': ['.env', 'artisan', 'storage', 'vendor', 'bootstrap', 'routes.php'],
-            'java': ['WEB-INF', 'META-INF', 'struts', 'actuator', 'jsp', 'servlet'],
-            'javascript': ['js', 'scripts', 'assets', 'bundle.js', 'min.js', 'vendor.js'],
-            'cms': ['admin', 'login', 'dashboard', 'content', 'editor', 'manage', 'control']
+        # Local wordlist file mappings
+        self.local_wordlist_files = {
+            'subdomain': [
+                'subdomains-top1million-5000.txt',
+                'subdomains-top5000.txt',
+                'dns_names.txt'
+            ],
+            'directory': [
+                'raft-medium-directories.txt',
+                'common-paths.txt',
+                'api-endpoints.txt'
+            ]
         }
         
-        # Common subdomain patterns
-        self.subdomain_patterns = [
-            "www", "mail", "ftp", "localhost", "webmail", "smtp", "pop", "ns1", "webdisk",
-            "ns2", "cpanel", "whm", "autodiscover", "autoconfig", "m", "imap", "test",
-            "ns", "blog", "pop3", "dev", "www2", "admin", "forum", "news", "vpn",
-            "ns3", "mail2", "new", "mysql", "old", "www1", "beta", "webserver",
-            "staging", "api", "cdn", "shop", "store", "portal", "demo", "secure"
-        ]
+        # Technology-specific patterns for intelligent detection
+        self.tech_patterns = {
+            'wordpress': {
+                'indicators': ['wp-content', 'wp-admin', 'wordpress', 'wp-includes'],
+                'paths': ['wp-admin', 'wp-login.php', 'wp-content', 'wp-includes', 'xmlrpc.php', 'wp-config.php', 'wp-load.php']
+            },
+            'drupal': {
+                'indicators': ['drupal', 'sites/default', 'modules'],
+                'paths': ['sites/default', 'modules', 'themes', 'core', 'install.php', 'settings.php']
+            },
+            'php': {
+                'indicators': ['.php', 'phpinfo', 'index.php'],
+                'paths': ['phpinfo.php', 'admin.php', 'config.php', 'info.php', 'install.php', 'setup.php']
+            },
+            'apache': {
+                'indicators': ['apache', 'httpd'],
+                'paths': ['server-status', 'server-info', '.htaccess', 'access_log']
+            },
+            'nginx': {
+                'indicators': ['nginx'],
+                'paths': ['nginx_status', 'stub_status', 'error.log']
+            },
+            'django': {
+                'indicators': ['django', 'admin/', 'static/'],
+                'paths': ['admin', 'api', 'static', 'media', 'debug', 'urls.py', 'settings.py']
+            },
+            'laravel': {
+                'indicators': ['laravel', 'artisan'],
+                'paths': ['.env', 'artisan', 'storage', 'vendor', 'bootstrap', 'routes.php']
+            },
+            'java': {
+                'indicators': ['java', 'jsp', 'servlet'],
+                'paths': ['WEB-INF', 'META-INF', 'struts', 'actuator', 'jsp', 'servlet']
+            },
+            'javascript': {
+                'indicators': ['js/', 'javascript', 'node'],
+                'paths': ['js', 'scripts', 'assets', 'bundle.js', 'min.js', 'vendor.js']
+            },
+            'react': {
+                'indicators': ['react', 'build/', 'public/'],
+                'paths': ['build', 'public', 'static', 'assets', 'manifest.json']
+            },
+            'angular': {
+                'indicators': ['angular', 'ng-'],
+                'paths': ['assets', 'app', 'main.js', 'polyfills.js', 'vendor.js']
+            },
+            'api': {
+                'indicators': ['api/', 'rest/', 'graphql'],
+                'paths': ['api', 'api/v1', 'api/v2', 'rest', 'graphql', 'swagger', 'docs']
+            }
+        }
+        
+        # Common subdomain patterns based on industry standards
+        self.intelligent_subdomain_patterns = {
+            'infrastructure': ['mail', 'smtp', 'pop', 'imap', 'ns1', 'ns2', 'dns', 'mx'],
+            'development': ['dev', 'test', 'staging', 'beta', 'alpha', 'demo', 'sandbox'],
+            'admin': ['admin', 'cpanel', 'webmail', 'portal', 'dashboard', 'control'],
+            'services': ['api', 'cdn', 'cache', 'proxy', 'gateway', 'auth', 'sso'],
+            'content': ['blog', 'news', 'forum', 'wiki', 'docs', 'support', 'help'],
+            'ecommerce': ['shop', 'store', 'cart', 'checkout', 'payment', 'billing'],
+            'security': ['vpn', 'secure', 'ssl', 'firewall', 'monitor'],
+            'mobile': ['m', 'mobile', 'app', 'apps'],
+            'cloud': ['cloud', 'aws', 'azure', 'gcp', 'k8s', 'docker']
+        }
         
         self.setup_directories()
 
@@ -80,199 +139,204 @@ class REKWordlistGenerator:
         if not self.silent:
             print(colored(message, color))
 
-    def analyze_domain(self):
-        """Analyze target domain to generate custom wordlist"""
+    def load_local_wordlists(self, wordlist_type='all'):
+        """Load wordlists from local wordlists directory first"""
+        self.log(f"[*] Loading local wordlists for {wordlist_type}...", "yellow")
+        loaded_count = 0
+        
+        if wordlist_type in ['subdomain', 'all']:
+            for filename in self.local_wordlist_files['subdomain']:
+                filepath = Path(self.local_wordlists_dir) / filename
+                if filepath.exists():
+                    self.log(f"[+] Loading local subdomain wordlist: {filename}", "green")
+                    loaded_count += self.process_wordlist_file(filepath, 'subdomain')
+                else:
+                    self.log(f"[!] Local wordlist not found: {filename}, will download", "yellow")
+        
+        if wordlist_type in ['directory', 'all']:
+            for filename in self.local_wordlist_files['directory']:
+                filepath = Path(self.local_wordlists_dir) / filename
+                if filepath.exists():
+                    self.log(f"[+] Loading local directory wordlist: {filename}", "green")
+                    loaded_count += self.process_wordlist_file(filepath, 'directory')
+                else:
+                    self.log(f"[!] Local wordlist not found: {filename}, will download", "yellow")
+        
+        self.log(f"[+] Loaded {loaded_count} words from local wordlists", "green")
+        return loaded_count
+
+    def analyze_domain_intelligently(self):
+        """Intelligent domain analysis to determine what wordlists to generate"""
+        if not self.domain:
+            return {'type': 'generic', 'technologies': [], 'industry': 'unknown'}
+        
+        self.log(f"[*] Performing intelligent analysis of domain: {self.domain}", "yellow")
+        
+        analysis = {
+            'type': 'custom',
+            'technologies': [],
+            'industry': 'unknown',
+            'patterns': []
+        }
+        
+        # Extract domain components for intelligent analysis
+        domain_parts = self.domain.split('.')
+        if len(domain_parts) >= 2:
+            base_domain = domain_parts[-2].lower()
+            tld = domain_parts[-1].lower()
+            
+            # Industry detection based on domain name and TLD
+            industry_keywords = {
+                'tech': ['tech', 'dev', 'code', 'soft', 'app', 'digital', 'cyber', 'cloud'],
+                'finance': ['bank', 'finance', 'pay', 'money', 'invest', 'crypto', 'coin'],
+                'ecommerce': ['shop', 'store', 'market', 'buy', 'sell', 'cart', 'commerce'],
+                'media': ['news', 'media', 'blog', 'press', 'journal', 'tv', 'radio'],
+                'education': ['edu', 'school', 'university', 'college', 'learn', 'course'],
+                'health': ['health', 'medical', 'doctor', 'clinic', 'hospital', 'care'],
+                'government': ['gov', 'government', 'city', 'state', 'federal', 'public']
+            }
+            
+            for industry, keywords in industry_keywords.items():
+                if any(keyword in base_domain for keyword in keywords) or tld in ['edu', 'gov']:
+                    analysis['industry'] = industry
+                    break
+            
+            # Generate intelligent subdomain patterns based on base domain
+            base_variations = self.generate_intelligent_domain_variations(base_domain)
+            analysis['patterns'].extend(base_variations)
+        
+        # Try to detect technologies from the domain
+        self.detect_technologies_from_domain(analysis)
+        
+        return analysis
+
+    def generate_intelligent_domain_variations(self, base_domain):
+        """Generate intelligent variations based on the base domain"""
+        variations = []
+        
+        # Add base domain variations
+        variations.extend([
+            base_domain,
+            f"{base_domain}1", f"{base_domain}2", f"{base_domain}01", f"{base_domain}02",
+            f"old-{base_domain}", f"new-{base_domain}", f"test-{base_domain}",
+            f"dev-{base_domain}", f"staging-{base_domain}", f"prod-{base_domain}",
+            f"{base_domain}-old", f"{base_domain}-new", f"{base_domain}-test",
+            f"{base_domain}-dev", f"{base_domain}-staging", f"{base_domain}-prod",
+            f"{base_domain}_old", f"{base_domain}_new", f"{base_domain}_test"
+        ])
+        
+        # Add contextual variations based on common patterns
+        for category, patterns in self.intelligent_subdomain_patterns.items():
+            for pattern in patterns[:3]:  # Limit to top 3 per category
+                variations.extend([
+                    f"{pattern}-{base_domain}",
+                    f"{pattern}{base_domain}",
+                    f"{base_domain}-{pattern}",
+                    f"{base_domain}{pattern}"
+                ])
+        
+        return variations
+
+    def detect_technologies_from_domain(self, analysis):
+        """Detect technologies by analyzing the domain and making intelligent requests"""
         if not self.domain:
             return
-            
-        self.log(f"[*] Analyzing domain: {self.domain}", "yellow")
         
-        # Extract domain components
-        domain_parts = self.domain.split('.')
+        self.log(f"[*] Detecting technologies for {self.domain}...", "yellow")
         
-        # Add domain name variations
-        if len(domain_parts) >= 2:
-            base_domain = domain_parts[-2]  # e.g., 'example' from 'example.com'
-            
-            # Generate variations
-            variations = [
-                base_domain,
-                base_domain + "1", base_domain + "2", base_domain + "01", base_domain + "02",
-                base_domain + "_old", base_domain + "_new", base_domain + "_test",
-                base_domain + "_dev", base_domain + "_staging", base_domain + "_prod",
-                "old_" + base_domain, "new_" + base_domain, "test_" + base_domain,
-                "dev_" + base_domain, "staging_" + base_domain, "prod_" + base_domain,
-                base_domain + "-old", base_domain + "-new", base_domain + "-test",
-                base_domain + "-dev", base_domain + "-staging", base_domain + "-prod"
+        try:
+            # Try multiple protocols and common paths
+            test_urls = [
+                f"https://{self.domain}",
+                f"http://{self.domain}",
+                f"https://www.{self.domain}",
+                f"http://www.{self.domain}"
             ]
             
-            self.subdomain_wordlist.update(variations)
-            self.directory_wordlist.update([v + "/" for v in variations])
-        
-        # Try to fetch robots.txt and sitemap
-        self.analyze_robots_txt()
-        self.analyze_sitemap()
-
-    def analyze_robots_txt(self):
-        """Extract paths from robots.txt"""
-        try:
-            for protocol in ['https', 'http']:
-                robots_url = f"{protocol}://{self.domain}/robots.txt"
-                response = self.session.get(robots_url, timeout=10, verify=False)
-                if response.status_code == 200:
-                    self.log(f"[+] Found robots.txt on {protocol}", "green")
-                    for line in response.text.split('\n'):
-                        if line.strip() and (line.startswith('Disallow:') or line.startswith('Allow:')):
-                            path = line.split(':', 1)[1].strip()
-                            if path and path != '/' and not path.startswith('*'):
-                                clean_path = path.lstrip('/').split('?')[0]
-                                if clean_path:
-                                    self.directory_wordlist.add(clean_path)
-                    break
-        except Exception as e:
-            self.log(f"[!] Error analyzing robots.txt: {e}", "red")
-
-    def analyze_sitemap(self):
-        """Extract paths from sitemap.xml"""
-        try:
-            sitemap_urls = [
-                f"https://{self.domain}/sitemap.xml",
-                f"http://{self.domain}/sitemap.xml",
-                f"https://{self.domain}/sitemap_index.xml",
-                f"http://{self.domain}/sitemap_index.xml"
-            ]
-            
-            for sitemap_url in sitemap_urls:
+            for url in test_urls:
                 try:
-                    response = self.session.get(sitemap_url, timeout=10, verify=False)
+                    response = self.session.get(url, timeout=10, verify=False)
                     if response.status_code == 200:
-                        self.log(f"[+] Found sitemap at {sitemap_url}", "green")
-                        # Simple regex to extract URLs
-                        urls = re.findall(r'<loc>(.*?)</loc>', response.text)
-                        for url in urls:
-                            parsed = urlparse(url)
-                            path = parsed.path.strip('/')
-                            if path and '?' not in path:
-                                self.directory_wordlist.add(path)
+                        self.analyze_response_for_technology(response, analysis)
                         break
                 except:
                     continue
         except Exception as e:
-            self.log(f"[!] Error analyzing sitemap: {e}", "red")
-
-    def detect_technologies(self, url=None):
-        """Detect technologies and add relevant wordlists"""
-        if not url and self.domain:
-            url = f"https://{self.domain}"
-        
-        if not url:
-            return
-        
-        self.log(f"[*] Detecting technologies for {url}", "yellow")
-        
-        try:
-            # Try to import Wappalyzer
-            try:
-                from Wappalyzer import Wappalyzer, WebPage
-                wappalyzer = Wappalyzer.latest()
-                webpage = WebPage.new_from_url(url, headers={'User-Agent': 'Mozilla/5.0'})
-                techs = wappalyzer.analyze_with_versions_and_categories(webpage)
-                
-                self.log(f"[+] Detected technologies: {list(techs.keys())}", "green")
-                
-                # Add technology-specific wordlists
-                for tech, details in techs.items():
-                    tech_lower = tech.lower()
-                    for pattern_key, patterns in self.tech_patterns.items():
-                        if pattern_key in tech_lower:
-                            self.directory_wordlist.update(patterns)
-                            self.log(f"[+] Added {pattern_key} patterns", "green")
-                            
-            except ImportError:
-                self.log("[!] Wappalyzer not available, using basic detection", "yellow")
-                # Basic technology detection through headers and content
-                response = self.session.get(url, timeout=10, verify=False)
-                headers = response.headers
-                content = response.text.lower()
-                
-                # Check server headers
-                server = headers.get('server', '').lower()
-                if 'apache' in server:
-                    self.directory_wordlist.update(self.tech_patterns['apache'])
-                elif 'nginx' in server:
-                    self.directory_wordlist.update(self.tech_patterns['nginx'])
-                
-                # Check content for technology indicators
-                if 'wp-content' in content or 'wordpress' in content:
-                    self.directory_wordlist.update(self.tech_patterns['wordpress'])
-                if 'drupal' in content:
-                    self.directory_wordlist.update(self.tech_patterns['drupal'])
-                if 'laravel' in content:
-                    self.directory_wordlist.update(self.tech_patterns['laravel'])
-                    
-        except Exception as e:
             self.log(f"[!] Error detecting technologies: {e}", "red")
 
-    def download_seclists(self):
-        """Download and process SecLists repository"""
-        self.log("[*] Downloading SecLists wordlists...", "yellow")
+    def analyze_response_for_technology(self, response, analysis):
+        """Analyze HTTP response to detect technologies"""
+        content = response.text.lower()
+        headers = {k.lower(): v.lower() for k, v in response.headers.items()}
         
-        # Known good wordlist files from SecLists
-        seclists_files = {
-            "Discovery/DNS/subdomains-top1million-5000.txt": "subdomain",
-            "Discovery/Web-Content/common.txt": "directory",
-            "Discovery/Web-Content/big.txt": "directory",
-            "Discovery/Web-Content/raft-medium-directories.txt": "directory",
-            "Discovery/Web-Content/directory-list-2.3-medium.txt": "directory"
-        }
+        # Check headers for technology indicators
+        server = headers.get('server', '')
+        powered_by = headers.get('x-powered-by', '')
         
-        for file_path, wordlist_type in seclists_files.items():
-            try:
-                url = f"{self.seclists_base_url}/{file_path}"
-                response = self.session.get(url, timeout=30)
-                if response.status_code == 200:
-                    self.log(f"[+] Downloaded {file_path}", "green")
-                    temp_file = Path(f"{self.wordlists_dir}/temp/temp_{wordlist_type}.txt")
-                    temp_file.write_text(response.text, encoding='utf-8')
-                    self.process_wordlist_file(temp_file, wordlist_type)
-                    temp_file.unlink()
-                else:
-                    self.log(f"[!] Failed to download {file_path}", "red")
-            except Exception as e:
-                self.log(f"[!] Error downloading {file_path}: {e}", "red")
+        for tech_name, tech_info in self.tech_patterns.items():
+            # Check content for technology indicators
+            if any(indicator in content for indicator in tech_info['indicators']):
+                analysis['technologies'].append(tech_name)
+                self.directory_wordlist.update(tech_info['paths'])
+                self.log(f"[+] Detected {tech_name} - added {len(tech_info['paths'])} specific paths", "green")
+            
+            # Check headers
+            if any(indicator in server or indicator in powered_by for indicator in tech_info['indicators']):
+                if tech_name not in analysis['technologies']:
+                    analysis['technologies'].append(tech_name)
+                    self.directory_wordlist.update(tech_info['paths'])
 
-    def download_github_wordlists(self):
-        """Download wordlists from various GitHub repositories"""
-        self.log("[*] Downloading additional wordlists...", "yellow")
+    def download_missing_wordlists(self):
+        """Download only missing wordlists that aren't available locally"""
+        self.log("[*] Checking for missing wordlists to download...", "yellow")
         
-        # Additional wordlist sources
-        repo_files = {
-            "assetnote/commonspeak2-wordlists": [
-                ("subdomains/subdomains.txt", "subdomain"),
-                ("wordlists/paramnames.txt", "directory")
-            ],
-            "six2dez/OneListForAll": [
-                ("onelistforallmicro.txt", "directory")
-            ]
+        missing_files = []
+        
+        # Check subdomain wordlists
+        for filename in self.local_wordlist_files['subdomain']:
+            filepath = Path(self.local_wordlists_dir) / filename
+            if not filepath.exists():
+                missing_files.append(('subdomain', filename))
+        
+        # Check directory wordlists
+        for filename in self.local_wordlist_files['directory']:
+            filepath = Path(self.local_wordlists_dir) / filename
+            if not filepath.exists():
+                missing_files.append(('directory', filename))
+        
+        if not missing_files:
+            self.log("[+] All required wordlists are available locally", "green")
+            return
+        
+        self.log(f"[*] Downloading {len(missing_files)} missing wordlists...", "yellow")
+        
+        # Download missing files
+        download_urls = {
+            'subdomains-top1million-5000.txt': 'Discovery/DNS/subdomains-top1million-5000.txt',
+            'dns_names.txt': 'Discovery/DNS/dns_names.txt',
+            'raft-medium-directories.txt': 'Discovery/Web-Content/raft-medium-directories.txt'
         }
         
-        for repo, files in repo_files.items():
-            for file_path, wordlist_type in files:
+        for wordlist_type, filename in missing_files:
+            if filename in download_urls:
                 try:
-                    url = f"https://raw.githubusercontent.com/{repo}/master/{file_path}"
+                    url = f"{self.seclists_base_url}/{download_urls[filename]}"
                     response = self.session.get(url, timeout=30)
                     if response.status_code == 200:
-                        self.log(f"[+] Downloaded {repo}/{file_path}", "green")
-                        temp_file = Path(f"{self.wordlists_dir}/temp/github_{repo.replace('/', '_')}_{file_path.replace('/', '_')}")
-                        temp_file.write_text(response.text, encoding='utf-8')
-                        self.process_wordlist_file(temp_file, wordlist_type)
-                        temp_file.unlink()
+                        local_path = Path(self.local_wordlists_dir) / filename
+                        local_path.parent.mkdir(exist_ok=True)
+                        local_path.write_text(response.text, encoding='utf-8')
+                        self.log(f"[+] Downloaded {filename}", "green")
+                        self.process_wordlist_file(local_path, wordlist_type)
+                    else:
+                        self.log(f"[!] Failed to download {filename}: HTTP {response.status_code}", "red")
                 except Exception as e:
-                    self.log(f"[!] Error downloading {repo}/{file_path}: {e}", "red")
+                    self.log(f"[!] Error downloading {filename}: {e}", "red")
 
     def process_wordlist_file(self, file_path, wordlist_type):
         """Process a wordlist file and add to appropriate set"""
         try:
+            count = 0
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f:
                     word = line.strip()
@@ -284,78 +348,94 @@ class REKWordlistGenerator:
                         
                         # Add to global wordlist
                         self.global_wordlist.add(word)
-                        
+                        count += 1
+            
+            return count
         except Exception as e:
             self.log(f"[!] Error processing {file_path}: {e}", "red")
+            return 0
 
-    def generate_custom_patterns(self):
-        """Generate custom patterns based on domain and common patterns"""
-        self.log("[*] Generating custom patterns...", "yellow")
+    def generate_domain_specific_patterns(self, analysis):
+        """Generate domain-specific patterns based on intelligent analysis"""
+        self.log("[*] Generating domain-specific patterns...", "yellow")
         
-        # Common directory patterns
-        common_dirs = [
-            "admin", "administrator", "login", "panel", "dashboard", "control",
-            "wp-admin", "wp-content", "wp-includes", "backup", "backups",
-            "config", "configuration", "settings", "api", "v1", "v2", "v3",
-            "test", "testing", "dev", "development", "staging", "prod",
-            "uploads", "files", "images", "img", "css", "js", "assets",
-            "include", "includes", "lib", "library", "vendor", "node_modules",
-            "tmp", "temp", "cache", "logs", "log", "data", "database", "db"
-        ]
+        # Add patterns based on analysis
+        if analysis['patterns']:
+            self.subdomain_wordlist.update(analysis['patterns'])
         
-        # Add to directory wordlist
-        self.directory_wordlist.update(common_dirs)
-        
-        # Generate year-based patterns
-        current_year = 2024
-        for year in range(current_year - 10, current_year + 2):
-            self.directory_wordlist.add(str(year))
-            self.subdomain_wordlist.add(str(year))
+        # Add industry-specific patterns
+        industry = analysis.get('industry', 'unknown')
+        if industry != 'unknown' and industry in self.intelligent_subdomain_patterns:
+            # Add relevant subdomain patterns for the detected industry
+            relevant_categories = []
+            if industry == 'tech':
+                relevant_categories = ['development', 'services', 'api']
+            elif industry == 'ecommerce':
+                relevant_categories = ['ecommerce', 'services', 'content']
+            elif industry == 'finance':
+                relevant_categories = ['security', 'services', 'admin']
+            elif industry == 'education':
+                relevant_categories = ['content', 'admin', 'services']
+            
+            for category in relevant_categories:
+                if category in self.intelligent_subdomain_patterns:
+                    self.subdomain_wordlist.update(self.intelligent_subdomain_patterns[category])
 
-    def generate_permutations(self):
-        """Generate permutations and mutations of existing words"""
+    def generate_intelligent_permutations(self, analysis):
+        """Generate intelligent permutations based on domain analysis"""
         if not self.domain:
             return
-            
-        self.log("[*] Generating domain-specific permutations...", "yellow")
+        
+        self.log("[*] Generating intelligent permutations...", "yellow")
         
         domain_parts = self.domain.split('.')
         if len(domain_parts) >= 2:
             base_name = domain_parts[-2]
             
+            # Generate smarter permutations based on industry and technologies
+            industry = analysis.get('industry', 'unknown')
+            technologies = analysis.get('technologies', [])
+            
+            # Industry-specific prefixes and suffixes
+            industry_affixes = {
+                'tech': {'prefixes': ['dev', 'api', 'test', 'staging'], 'suffixes': ['api', 'dev', 'test']},
+                'ecommerce': {'prefixes': ['shop', 'store', 'cart'], 'suffixes': ['shop', 'store', 'pay']},
+                'finance': {'prefixes': ['secure', 'pay', 'bank'], 'suffixes': ['secure', 'pay', 'wallet']},
+                'education': {'prefixes': ['learn', 'course', 'student'], 'suffixes': ['edu', 'learn', 'portal']}
+            }
+            
+            # Use industry-specific affixes if available
+            if industry in industry_affixes:
+                prefixes = industry_affixes[industry]['prefixes']
+                suffixes = industry_affixes[industry]['suffixes']
+            else:
+                # Generic but intelligent prefixes/suffixes
+                prefixes = ['dev', 'test', 'staging', 'api', 'admin']
+                suffixes = ['dev', 'test', 'api', 'admin', 'portal']
+            
             # Generate permutations
             permutations = []
             
-            # Number suffixes
-            for i in range(1, 20):
+            # Technology-specific permutations
+            for tech in technologies:
                 permutations.extend([
-                    f"{base_name}{i}",
-                    f"{base_name}0{i}",
-                    f"{base_name}-{i}",
-                    f"{base_name}_{i}"
+                    f"{tech}-{base_name}",
+                    f"{base_name}-{tech}",
+                    f"{tech}{base_name}",
+                    f"{base_name}{tech}"
                 ])
             
-            # Common prefixes/suffixes
-            prefixes = ["dev", "test", "staging", "beta", "alpha", "pre", "old", "new", "tmp", "temp"]
-            suffixes = ["dev", "test", "staging", "beta", "prod", "old", "new", "bak", "backup", "tmp"]
+            # Industry and number-based permutations
+            for i in range(1, 10):
+                permutations.extend([f"{base_name}{i}", f"{base_name}0{i}"])
             
-            for prefix in prefixes:
-                permutations.extend([
-                    f"{prefix}-{base_name}",
-                    f"{prefix}{base_name}",
-                    f"{prefix}.{base_name}",
-                    f"{prefix}_{base_name}"
-                ])
+            for prefix in prefixes[:5]:  # Limit to top 5
+                permutations.extend([f"{prefix}-{base_name}", f"{prefix}{base_name}"])
             
-            for suffix in suffixes:
-                permutations.extend([
-                    f"{base_name}-{suffix}",
-                    f"{base_name}{suffix}",
-                    f"{base_name}.{suffix}",
-                    f"{base_name}_{suffix}"
-                ])
+            for suffix in suffixes[:5]:  # Limit to top 5
+                permutations.extend([f"{base_name}-{suffix}", f"{base_name}{suffix}"])
             
-            # Add permutations to both subdomain and directory lists
+            # Add permutations to wordlists
             self.subdomain_wordlist.update(permutations)
             self.directory_wordlist.update([p + "/" for p in permutations])
 
@@ -373,98 +453,10 @@ class REKWordlistGenerator:
         self.subdomain_wordlist = sorted(list(self.subdomain_wordlist))
         self.directory_wordlist = sorted(list(self.directory_wordlist))
 
-    def save_wordlists(self):
+    def save_wordlists(self, choice="4"):
         """Save generated wordlists to files"""
-        self.log("[*] Saving wordlists...", "yellow")
+        self.log("[*] Saving intelligent wordlists...", "yellow")
         
-        # Save global wordlist
-        global_file = Path(f"{self.output_dir}/global_wordlist.txt")
-        global_file.write_text('\n'.join(self.global_wordlist), encoding='utf-8')
-        
-        # Save subdomain wordlist
-        subdomain_file = Path(f"{self.output_dir}/subdomain_wordlist.txt")
-        subdomain_file.write_text('\n'.join(self.subdomain_wordlist), encoding='utf-8')
-        
-        # Save directory wordlist
-        directory_file = Path(f"{self.output_dir}/directory_wordlist.txt")
-        directory_file.write_text('\n'.join(self.directory_wordlist), encoding='utf-8')
-        
-        self.log(f"[+] Global wordlist saved: {global_file} ({len(self.global_wordlist)} words)", "green")
-        self.log(f"[+] Subdomain wordlist saved: {subdomain_file} ({len(self.subdomain_wordlist)} words)", "green")
-        self.log(f"[+] Directory wordlist saved: {directory_file} ({len(self.directory_wordlist)} words)", "green")
-
-    def cleanup(self):
-        """Clean up temporary files"""
-        temp_dir = Path(f"{self.wordlists_dir}/temp")
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-
-    def run_interactive(self):
-        """Run interactive wordlist generator"""
-        if not self.silent:
-            print(colored("\n🔧 REK Wordlist Generator", "cyan", attrs=["bold"]))
-            print(colored("Intelligent wordlist generation for domain reconnaissance", "cyan"))
-        
-        # Ask for domain if not provided
-        if not self.domain:
-            domain = input(colored("Enter domain name for wordlist generation (e.g., example.com): ", "yellow")).strip()
-            if domain:
-                self.domain = domain
-                self.wordlists_dir = f"{domain}-wordlists"
-                self.output_dir = f"{domain}-wordlists/generated"
-                self.setup_directories()
-        
-        # Ask for wordlist types to generate
-        print(colored("\nSelect wordlist types to generate:", "cyan"))
-        print("1. Subdomain wordlist")
-        print("2. Directory wordlist") 
-        print("3. Global wordlist (combined)")
-        print("4. All wordlists (recommended)")
-        
-        choice = input(colored("Select option (1-4) [default: 4]: ", "yellow")).strip()
-        if not choice:
-            choice = "4"
-        
-        # Ask for technology detection
-        tech_detect = input(colored("Enable technology detection? (y/n) [default: y]: ", "yellow")).strip().lower()
-        if not tech_detect:
-            tech_detect = "y"
-        
-        # Generate wordlists
-        self.generate_wordlists(choice, tech_detect == "y")
-
-    def generate_wordlists(self, choice="4", tech_detect=True):
-        """Generate wordlists based on selection"""
-        self.log("[*] Starting intelligent wordlist generation...", "cyan")
-        
-        # Step 1: Analyze target domain if provided
-        if self.domain:
-            self.analyze_domain()
-            
-            # Step 2: Detect technologies if enabled
-            if tech_detect:
-                self.detect_technologies()
-        
-        # Step 3: Download SecLists
-        self.download_seclists()
-        
-        # Step 4: Download from other GitHub repositories
-        self.download_github_wordlists()
-        
-        # Step 5: Generate custom patterns
-        self.generate_custom_patterns()
-        
-        # Step 6: Generate permutations
-        if self.domain:
-            self.generate_permutations()
-        
-        # Step 7: Add base subdomain patterns
-        self.subdomain_wordlist.update(self.subdomain_patterns)
-        
-        # Step 8: Clean and deduplicate
-        self.clean_and_deduplicate()
-        
-        # Step 9: Save wordlists based on choice
         if choice in ["1", "4"]:
             subdomain_file = Path(f"{self.output_dir}/subdomain_wordlist.txt")
             subdomain_file.write_text('\n'.join(self.subdomain_wordlist), encoding='utf-8')
@@ -479,22 +471,91 @@ class REKWordlistGenerator:
             global_file = Path(f"{self.output_dir}/global_wordlist.txt")
             global_file.write_text('\n'.join(self.global_wordlist), encoding='utf-8')
             self.log(f"[+] Global wordlist saved: {global_file} ({len(self.global_wordlist)} words)", "green")
+
+    def cleanup(self):
+        """Clean up temporary files"""
+        temp_dir = Path(f"{self.wordlists_dir}/temp")
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+
+    def run_interactive(self):
+        """Run interactive wordlist generator"""
+        if not self.silent:
+            print(colored("\n🔧 REK Intelligent Wordlist Generator", "cyan", attrs=["bold"]))
+            print(colored("AI-powered wordlist generation for domain reconnaissance", "cyan"))
         
-        # Step 10: Cleanup
+        # Ask for domain if not provided
+        if not self.domain:
+            domain = input(colored("Enter domain name for intelligent wordlist generation (e.g., example.com): ", "yellow")).strip()
+            if domain:
+                self.domain = domain
+                self.wordlists_dir = f"{domain}-wordlists"
+                self.output_dir = f"{domain}-wordlists/generated"
+                self.setup_directories()
+        
+        # Ask for wordlist types to generate
+        print(colored("\nSelect wordlist types to generate:", "cyan"))
+        print("1. Subdomain wordlist (intelligent)")
+        print("2. Directory wordlist (technology-aware)") 
+        print("3. Global wordlist (combined)")
+        print("4. All wordlists (recommended)")
+        
+        choice = input(colored("Select option (1-4) [default: 4]: ", "yellow")).strip()
+        if not choice:
+            choice = "4"
+        
+        # Generate wordlists intelligently
+        self.generate_intelligent_wordlists(choice)
+
+    def generate_intelligent_wordlists(self, choice="4"):
+        """Generate intelligent wordlists based on domain analysis"""
+        self.log("[*] Starting intelligent wordlist generation...", "cyan")
+        
+        # Step 1: Perform intelligent domain analysis
+        analysis = self.analyze_domain_intelligently()
+        self.log(f"[+] Domain analysis: Industry={analysis['industry']}, Technologies={analysis['technologies']}", "green")
+        
+        # Step 2: Load local wordlists first (prioritize local resources)
+        local_count = self.load_local_wordlists()
+        
+        # Step 3: Download only missing wordlists
+        self.download_missing_wordlists()
+        
+        # Step 4: Generate domain-specific patterns based on analysis
+        self.generate_domain_specific_patterns(analysis)
+        
+        # Step 5: Generate intelligent permutations
+        if self.domain:
+            self.generate_intelligent_permutations(analysis)
+        
+        # Step 6: Add base patterns from intelligent subdomain patterns
+        for category_patterns in self.intelligent_subdomain_patterns.values():
+            self.subdomain_wordlist.update(category_patterns[:5])  # Top 5 from each category
+        
+        # Step 7: Clean and deduplicate
+        self.clean_and_deduplicate()
+        
+        # Step 8: Save wordlists based on choice
+        self.save_wordlists(choice)
+        
+        # Step 9: Cleanup
         self.cleanup()
         
         self.log("[+] Intelligent wordlist generation completed!", "green")
+        if self.domain:
+            self.log(f"[+] Generated domain-specific wordlists for {self.domain}", "green")
+            self.log(f"[+] Technologies detected: {analysis['technologies']}", "green")
+            self.log(f"[+] Industry classification: {analysis['industry']}", "green")
 
 def main():
     """Main function for standalone execution."""
-    print(colored("🔧 REK Wordlist Generator", "cyan", attrs=["bold"]))
-    print(colored("Intelligent wordlist generation for domain reconnaissance", "cyan"))
+    print(colored("🔧 REK Intelligent Wordlist Generator", "cyan", attrs=["bold"]))
+    print(colored("AI-powered wordlist generation for domain reconnaissance", "cyan"))
 
     parser = argparse.ArgumentParser(description="REK Intelligent Wordlist Generator")
     parser.add_argument("-d", "--domain", help="Target domain to analyze")
     parser.add_argument("-o", "--output", help="Output directory")
     parser.add_argument("-s", "--silent", action="store_true", help="Silent mode")
-    parser.add_argument("--no-tech", action="store_true", help="Skip technology detection")
     parser.add_argument("-t", "--type", choices=["1", "2", "3", "4"], default="4",
                        help="Wordlist type: 1=subdomain, 2=directory, 3=global, 4=all")
     
@@ -515,7 +576,7 @@ def main():
     
     try:
         if args.domain:
-            generator.generate_wordlists(args.type, not args.no_tech)
+            generator.generate_intelligent_wordlists(args.type)
         else:
             generator.run_interactive()
     except KeyboardInterrupt:
