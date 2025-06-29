@@ -292,7 +292,7 @@ class WordlistGeneratorWrapper:
         except ImportError as e:
             print(colored(f"[!] Error importing REK Wordlist Generator: {e}", "red"))
         except Exception as e:
-            print(colored(f"[!] Error running wordlist generator: {e}", "red"))e()
+            print(colored(f"[!] Error running wordlist generator: {e}", "red"))
 
 
 class HTTPStatusChecker:
