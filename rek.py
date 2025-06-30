@@ -25,6 +25,7 @@ import shlex
 import csv
 import threading
 from rek_email_search import EmailSearcher
+from rek_wordlist_generator import REKWordlistGenerator
 import subprocess
 import glob
 from tldextract import extract
@@ -266,6 +267,33 @@ class SubdomainScanner:
         email_thread.join()
         if not self.silent:
             logger.info(colored("Completed email search in parallel", "green"))
+
+class WordlistGeneratorWrapper:
+    def __init__(self, silent: bool = False):
+        self.silent = silent
+        self.domain = None
+
+    def run_interactive(self):
+        """Run interactive wordlist generator using REK Wordlist Generator."""
+        try:
+            from rek_wordlist_generator import REKWordlistGenerator
+            
+            if not self.silent:
+                print(colored("\n🔧 REK Wordlist Generator", "cyan", attrs=["bold"]))
+            
+            # Ask for domain first to create domain-specific folder
+            domain = input(colored("Enter domain name for wordlist generation (e.g., example.com): ", "yellow")).strip()
+            if domain:
+                self.domain = domain
+                
+            generator = REKWordlistGenerator(silent=self.silent, domain=self.domain)
+            generator.run_interactive()
+            
+        except ImportError as e:
+            print(colored(f"[!] Error importing REK Wordlist Generator: {e}", "red"))
+        except Exception as e:
+            print(colored(f"[!] Error running wordlist generator: {e}", "red"))
+
 
 class HTTPStatusChecker:
     def __init__(self, timeout: int = 10, max_concurrent: int = 100, silent: bool = False):
@@ -618,7 +646,8 @@ class DirectoryScanner:
         wordlist = []
         try:
             wappalyzer = Wappalyzer.latest()
-            webpage = WebPage.new_from_url(url, headers={'User-Agent': 'Mozilla/5.0'})
+            # Fix: Remove headers parameter as it's not supported in newer versions
+            webpage = WebPage.new_from_url(url)
             techs = wappalyzer.analyze_with_versions_and_categories(webpage)
             if not self.silent:
                 logger.info(colored(f"Detected technologies: {techs.keys()}", "green"))
@@ -876,6 +905,7 @@ class ReconTool:
         self.http_checker = HTTPStatusChecker(args.timeout, args.concurrency, args.silent)
         self.dir_scanner = DirectoryScanner(args.timeout, args.concurrency, args.depth, args.silent)
         self.email_searcher = EmailSearcher(args.timeout, args.silent)
+        self.wordlist_generator = WordlistGeneratorWrapper(args.silent)
         self.silent = args.silent
         self.default_input_file = "http_results.csv"
 
@@ -902,11 +932,13 @@ class ReconTool:
         """Display the initial REK menu with colors."""
         print(colored("REK Menu", "cyan", attrs=["bold"]))
         print(colored("1. Run Recon Playbook", "green"))
-        print(colored("2. Command Line", "green"))
-        print(colored("3. Navigation", "green"))
-        print(colored("4. REK Email Search", "green"))
-        print(colored("5. Exit", "red"))
-        return input(colored("Select an option (1-5): ", "yellow"))
+        print(colored("2. Subdomain Enumeration", "green"))
+        print(colored("3. HTTP Status Checking", "green"))
+        print(colored("4. Directory Scanning", "green"))
+        print(colored("5. REK Email Search", "green"))
+        print(colored("6. REK Wordlist Generator", "green"))
+        print(colored("7. Exit", "red"))
+        return input(colored("Select an option (1-7): ", "yellow"))
 
     def display_recon_menu(self, show_examples: bool = False):
         """Display the Recon Tool menu with colors."""
@@ -1042,6 +1074,7 @@ class ReconTool:
         class Args:
             pass
         args = Args()
+        # Corrected the syntax error in the WordlistGenerator class definition.
         args.input = input_file if input_file else None
         args.status = status if status else None
         args.url = url if url else None
@@ -1170,7 +1203,7 @@ class ReconTool:
         try:
             subprocess.run(["chmod", "+x", install_script], check=True, capture_output=True)
             subprocess.run(["chmod", "+x", playbook_path], check=True, capture_output=True)
-            
+
         except subprocess.CalledProcessError as e:
             print(colored(f"[!] Error making scripts executable: {e.stderr.decode()}", "red"))
             return
@@ -1495,25 +1528,15 @@ class ReconTool:
             if choice == '1':
                 self.run_playbook()
             elif choice == '2':
-                command = input(colored("Enter command (e.g., python3 rek-beta.py -d xyz.com -o results.txt): ", "yellow")).strip()
-                self.parse_and_run_command(command, choice)
+                args = self.prompt_subdomain_args()
+                self.run_subdomain_scan(args)
             elif choice == '3':
-                while True:
-                    recon_choice = self.display_recon_menu(show_examples=True)
-                    if recon_choice == '1':
-                        args = self.prompt_subdomain_args()
-                        self.run_subdomain_scan(args)
-                    elif recon_choice == '2':
-                        args = self.prompt_http_args()
-                        self.run_http_check(args)
-                    elif recon_choice == '3':
-                        args = self.prompt_directory_args()
-                        self.run_directory_scan(args)
-                    elif recon_choice == '4':
-                        break
-                    else:
-                        print(colored("Invalid option. Please select 1-4.", "red"))
+                args = self.prompt_http_args()
+                self.run_http_check(args)
             elif choice == '4':
+                args = self.prompt_directory_args()
+                self.run_directory_scan(args)
+            elif choice == '5':
                 while True:
                     email_choice = self.display_email_menu(show_examples=True)
                     if email_choice == '1':
@@ -1526,14 +1549,99 @@ class ReconTool:
                         break
                     else:
                         print(colored("Invalid option. Please select 1-3.", "red"))
-            elif choice == '5':
+            elif choice == '6':
+                self.wordlist_generator.run_interactive()
+            elif choice == '7':
                 print(colored("Exiting REK. Stay ethical!", "cyan"))
                 break
             else:
-                print(colored("Invalid option. Please select 1-5.", "red"))
+                print(colored("Invalid option. Please select 1-7.", "red"))
+
+def print_help():
+    """Print detailed help information for REK tool."""
+    help_text = """
+REK - Reconnaissance Toolkit
+
+USAGE:
+    python3 rek.py [OPTIONS]
+
+MENU OPTIONS:
+    1. Run Recon Playbook    - Execute automated reconnaissance playbooks
+    2. Subdomain Enumeration - Discover subdomains using multiple techniques
+    3. HTTP Status Checking  - Check HTTP status of discovered domains
+    4. Directory Scanning    - Scan for directories and files on web servers
+    5. REK Email Search      - Search for email addresses in GitHub repositories
+    6. REK Wordlist Generator- Generate and download wordlists for testing
+    7. Exit                  - Exit the application
+
+COMMAND LINE OPTIONS:
+
+Subdomain Enumeration:
+    -d, --domain DOMAIN         Target domain (e.g., example.com)
+    -w, --subdomain-wordlist    Custom wordlist for subdomain enumeration
+    -o, --output FILE          Output file (default: results.txt)
+    --token TOKEN              GitHub Personal Access Token
+    --limit-commits N          Max commits to scan per repo (default: 50)
+    --skip-forks              Skip forked repositories
+    -t, --timeout N           Request timeout in seconds (default: 10)
+    -c, --concurrency N       Maximum concurrent requests (default: 50)
+    -r, --retries N           Number of retries for failed requests (default: 3)
+
+HTTP Status Checking:
+    --input FILE              Input file with URLs to check
+    -o, --output FILE         Output CSV file (default: http_results.csv)
+    -t, --timeout N           Request timeout in seconds (default: 10)
+    -c, --concurrency N       Maximum concurrent requests (default: 50)
+
+Directory Scanning:
+    --input FILE              Input CSV file with URLs
+    --status CODES            Comma-separated status codes (e.g., 200,301,403)
+    --url URL                 Single URL to scan (alternative to --input)
+    --dir-wordlist FILE       Custom wordlist for directory scanning
+    --depth N                 Maximum crawling depth (1-10, default: 5)
+    -t, --timeout N           Request timeout in seconds (default: 10)
+    -c, --concurrency N       Maximum concurrent requests (default: 50)
+
+Email Search:
+    --email-domain DOMAIN     Domain for email search
+    --email-username USER     GitHub username for email search
+    --org ORGANIZATION        GitHub organization for email search
+    --token TOKEN             GitHub Personal Access Token
+    --hibp-key KEY            Have I Been Pwned API key
+    --limit-commits N         Max commits to scan per repo (default: 50)
+    --skip-forks              Skip forked repositories
+    -o, --output FILE         Output CSV file (default: email_results.csv)
+
+General Options:
+    --silent                  Run in silent mode (minimal output)
+    -h, --help               Show this help message
+
+EXAMPLES:
+    # Interactive mode
+    python3 rek.py
+
+    # Subdomain enumeration
+    python3 rek.py -d example.com -w wordlists/subdomains.txt --token ghp_xxx
+
+    # HTTP status checking
+    python3 rek.py --input results.txt -o http_results.csv -t 15 -c 100
+
+    # Directory scanning
+    python3 rek.py --input http_results.csv --status 200,301,403 --depth 3
+
+    # Email search by domain
+    python3 rek.py --email-domain example.com --token ghp_xxx --hibp-key xxx
+
+    # Email search by organization
+    python3 rek.py --org microsoft --token ghp_xxx --limit-commits 100
+
+For more information, visit: https://github.com/your-repo/rek-toolkit
+"""
+    print(help_text)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting")
+    parser = argparse.ArgumentParser(description="rek - Recon Tool for bug bounty hunting", add_help=False)
+    parser.add_argument('-h', '--help', action='store_true', help="Show detailed help message")
     parser.add_argument('-d', '--domain', help="Domain for subdomain enumeration (e.g., xyz.com)")
     parser.add_argument('--email-domain', help="Domain for email search (e.g., xyz.com)")
     parser.add_argument('--email-username', help="GitHub username for email search (e.g., exampleuser)")
@@ -1555,5 +1663,10 @@ if __name__ == "__main__":
     parser.add_argument('--silent', action='store_true', help="Run in silent mode (only show main status messages)")
 
     args = parser.parse_args()
+
+    if args.help:
+        print_help()
+        sys.exit(0)
+
     recon_tool = ReconTool(args)
     recon_tool.run()

@@ -33,7 +33,7 @@ GF_PATTERNS_DIR="$HOME/.gf"
 # Function to detect system type
 detect_system() {
     echo -e "${BLUE}[+] Detecting operating system...${NC}"
-    
+
     if [ "$(uname)" == "Darwin" ]; then
         OS="macos"
         echo -e "${GREEN}[✓] macOS detected${NC}"
@@ -64,21 +64,21 @@ setup_directories() {
 # Function to install basic dependencies based on OS
 install_basic_dependencies() {
     echo -e "${BLUE}[+] Installing basic dependencies...${NC}"
-    
+
     case $OS in
         macos)
             echo -e "${YELLOW}[*] Installing Homebrew if not installed...${NC}"
             if ! command -v brew &> /dev/null; then
                 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
             fi
-            
+
             echo -e "${YELLOW}[*] Installing base packages...${NC}"
             brew install wget curl git python3 make gcc jq
             ;;
         debian)
             echo -e "${YELLOW}[*] Updating package lists...${NC}"
             sudo apt update
-            
+
             echo -e "${YELLOW}[*] Installing base packages...${NC}"
             sudo apt install -y wget curl git python3 python3-pip build-essential jq
             ;;
@@ -95,14 +95,14 @@ install_basic_dependencies() {
             echo -e "${YELLOW}[!] You may need to manually install: wget, curl, git, python3, pip3, gcc, make, jq${NC}"
             ;;
     esac
-    
+
     echo -e "${GREEN}[✓] Basic dependencies installed${NC}"
 }
 
 # Function to install Go
 install_go() {
     echo -e "${BLUE}[+] Installing Go...${NC}"
-    
+
     if command -v go &> /dev/null; then
         go_version=$(go version | awk '{print $3}' | sed 's/go//')
         echo -e "${GREEN}[✓] Go is already installed (version $go_version)${NC}"
@@ -143,7 +143,7 @@ install_go() {
         echo -e "${YELLOW}[!] Please ensure Go binaries are in your PATH${NC}"
         echo -e "${YELLOW}[!] You may need to restart your terminal or run: source ~/.bashrc (or ~/.profile)${NC}"
     fi
-    
+
     if [ -z "$GOPATH" ]; then
         echo 'export GOPATH=$HOME/go' >> ~/.bashrc
         echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.bashrc
@@ -151,14 +151,14 @@ install_go() {
         export PATH=$PATH:$GOPATH/bin
         echo -e "${YELLOW}[*] Go environment variables set. You may need to restart your terminal${NC}"
     fi
-    
+
     mkdir -p $HOME/go/{bin,pkg,src}
 }
 
 # Function to install Python tools
 install_python_tools() {
     echo -e "${BLUE}[+] Installing Python tools and dependencies...${NC}"
-    
+
     if ! command -v pip3 &> /dev/null; then
         case $OS in
             macos)
@@ -178,24 +178,38 @@ install_python_tools() {
                 ;;
         esac
     fi
-    
+
     pip3 install --upgrade pip
     pip3 install requests dnsgen tldextract dnspython
-    
+
     echo -e "${GREEN}[✓] Python tools installed${NC}"
+}
+
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" &> /dev/null
+}
+
+# Function to check if a Go tool is installed
+go_tool_exists() {
+    if command -v "$1" &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Function to install Go tools
 install_go_tools() {
     echo -e "${BLUE}[+] Installing Go tools...${NC}"
-    
+
     if ! command -v go &> /dev/null; then
         echo -e "${RED}[!] Go is not installed. Please install Go first${NC}"
         return 1
     fi
-    
+
     export PATH=$PATH:$HOME/go/bin:$TOOLS_DIR
-    
+
     local tools=(
         "subfinder:github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
         "assetfinder:github.com/tomnomnom/assetfinder@latest"
@@ -213,20 +227,24 @@ install_go_tools() {
         "gf:github.com/tomnomnom/gf@latest"
         "ripgen:github.com/hueristiq/ripgen@latest"
     )
-    
+
     for tool_entry in "${tools[@]}"; do
         IFS=':' read -r tool repo <<< "$tool_entry"
-        echo -e "${YELLOW}[*] Installing $tool...${NC}"
-        go install -v "$repo" || echo -e "${RED}[!] Failed to install $tool${NC}"
+		if ! go_tool_exists "$tool"; then
+        	echo -e "${YELLOW}[*] Installing $tool...${NC}"
+        	go install -v "$repo" || echo -e "${RED}[!] Failed to install $tool${NC}"
+		else
+			echo -e "${GREEN}[✓] $tool is already installed${NC}"
+		fi
     done
-    
+
     echo -e "${GREEN}[✓] Go tools installed successfully${NC}"
 }
 
 # Function to install Findomain
 install_findomain() {
     echo -e "${BLUE}[+] Installing Findomain...${NC}"
-    
+
     if command -v findomain &> /dev/null; then
         echo -e "${GREEN}[✓] Findomain is already installed${NC}"
     else
@@ -247,12 +265,12 @@ install_findomain() {
 # Function to install GF and patterns
 install_gf_patterns() {
     echo -e "${BLUE}[+] Installing GF patterns...${NC}"
-    
+
     if ! command -v gf &> /dev/null; then
         echo -e "${YELLOW}[!] GF not found. Installing...${NC}"
         go install -v github.com/tomnomnom/gf@latest
     fi
-    
+
     echo -e "${YELLOW}[*] Downloading GF patterns...${NC}"
     if [ -d "$GF_PATTERNS_DIR/Gf-Patterns" ]; then
         echo -e "${YELLOW}[!] $GF_PATTERNS_DIR/Gf-Patterns already exists. Updating...${NC}"
@@ -261,11 +279,11 @@ install_gf_patterns() {
         mkdir -p "$GF_PATTERNS_DIR"
         git clone https://github.com/1ndianl33t/Gf-Patterns "$GF_PATTERNS_DIR/Gf-Patterns"
     fi
-    
+
     if [ -d "$GF_PATTERNS_DIR/Gf-Patterns" ]; then
         cp "$GF_PATTERNS_DIR/Gf-Patterns"/*.json "$GF_PATTERNS_DIR/"
     fi
-    
+
     if [ -d "$TOOLS_DIR/gf-secrets" ]; then
         echo -e "${YELLOW}[!] $TOOLS_DIR/gf-secrets already exists. Updating...${NC}"
         git -C "$TOOLS_DIR/gf-secrets" pull
@@ -275,14 +293,14 @@ install_gf_patterns() {
     if [ -d "$TOOLS_DIR/gf-secrets/.gf" ]; then
         cp "$TOOLS_DIR/gf-secrets/.gf"/*.json "$GF_PATTERNS_DIR/"
     fi
-    
+
     echo -e "${GREEN}[✓] GF patterns installed${NC}"
 }
 
 # Function to install github-subdomains and gitlab-subdomains
 install_code_platform_tools() {
     echo -e "${BLUE}[+] Installing GitHub and GitLab subdomain tools...${NC}"
-    
+
     echo -e "${YELLOW}[*] Installing github-subdomains...${NC}"
     if ! command -v github-subdomains &> /dev/null; then
         if [ -d "$TOOLS_DIR/github-subdomains" ]; then
@@ -296,7 +314,7 @@ install_code_platform_tools() {
         mv github-subdomains "$TOOLS_DIR/"
         cd - > /dev/null
     fi
-    
+
     echo -e "${YELLOW}[*] Installing gitlab-subdomains...${NC}"
     if ! command -v gitlab-subdomains &> /dev/null; then
         if [ -d "$TOOLS_DIR/gitlab-subdomains" ]; then
@@ -310,14 +328,14 @@ install_code_platform_tools() {
         mv gitlab-subdomains "$TOOLS_DIR/"
         cd - > /dev/null
     fi
-    
+
     echo -e "${GREEN}[✓] GitHub and GitLab tools installed${NC}"
 }
 
 # Function to download DNS resolvers
 download_resolvers() {
     echo -e "${BLUE}[+] Downloading DNS resolvers...${NC}"
-    
+
     curl -s https://raw.githubusercontent.com/blechschmidt/massdns/master/lists/resolvers.txt -o "$RESOLVERS_FILE"
     if [ -s "$RESOLVERS_FILE" ]; then
         echo -e "${GREEN}[✓] DNS resolvers downloaded${NC}"
@@ -329,50 +347,50 @@ download_resolvers() {
 # Function to download wordlists
 download_wordlists() {
     echo -e "${BLUE}[+] Downloading wordlists...${NC}"
-    
+
     if [ ! -f "$WORDLISTS_DIR/dns_names.txt" ]; then
         echo -e "${YELLOW}[*] Downloading dns_names.txt...${NC}"
         curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/dns_names.txt -o "$WORDLISTS_DIR/dns_names.txt"
     fi
-    
+
     if [ ! -f "$WORDLISTS_DIR/subdomains-top1million-5000.txt" ]; then
         echo -e "${YELLOW}[*] Downloading subdomains-top1million-5000.txt...${NC}"
         curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-5000.txt -o "$WORDLISTS_DIR/subdomains-top1million-5000.txt"
     fi
-    
+
     if [ ! -f "$WORDLISTS_DIR/raft-medium-directories.txt" ]; then
         echo -e "${YELLOW}[*] Downloading raft-medium-directories.txt...${NC}"
         curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt -o "$WORDLISTS_DIR/raft-medium-directories.txt"
     fi
-    
+
     echo -e "${GREEN}[✓] Wordlists downloaded${NC}"
 }
 
 # Function to create configuration file
 create_config() {
     echo -e "${BLUE}[+] Creating configuration file...${NC}"
-    
+
     if [ ! -f "$CONFIG_FILE" ]; then
         echo -e "${YELLOW}[?] Enter your Chaos API key (leave blank if you don't have one):${NC}"
         read -r CHAOS_API_KEY
-        
+
         echo -e "${YELLOW}[?] Enter your GitHub API token (leave blank if you don't have one):${NC}"
         read -r GITHUB_API_TOKEN
-        
+
         echo -e "${YELLOW}[?] Enter your GitLab API token (leave blank if you don't have one):${NC}"
         read -r GITLAB_API_TOKEN
-        
+
         echo -e "${YELLOW}[?] Default number of threads to use (default: 100):${NC}"
         read -r THREADS
         THREADS=${THREADS:-100}
-        
+
         cat <<EOL > "$CONFIG_FILE"
 CHAOS_API_KEY="$CHAOS_API_KEY"
 GITHUB_API_TOKEN="$GITHUB_API_TOKEN"
 GITLAB_API_TOKEN="$GITLAB_API_TOKEN"
 THREADS="$THREADS"
 EOL
-        
+
         echo -e "${GREEN}[✓] Configuration file created at $CONFIG_FILE${NC}"
     else
         echo -e "${GREEN}[✓] Configuration file already exists${NC}"
@@ -382,7 +400,7 @@ EOL
 # Function to verify installation
 verify_installation() {
     echo -e "${BLUE}[+] Verifying installation...${NC}"
-    
+
     local tools=(
         "subfinder"
         "assetfinder"
@@ -404,12 +422,12 @@ verify_installation() {
         "gf"
         "ripgen"
     )
-    
+
     printf "%-20s %-10s\n" "Tool" "Status"
     printf "%-20s %-10s\n" "--------------------" "----------"
-    
+
     local all_tools_installed=true
-    
+
     for tool in "${tools[@]}"; do
         if command -v "$tool" &> /dev/null; then
             printf "%-20s ${GREEN}%-10s${NC}\n" "$tool" "Installed"
@@ -418,28 +436,28 @@ verify_installation() {
             all_tools_installed=false
         fi
     done
-    
+
     if [ -f "$RESOLVERS_FILE" ]; then
         printf "%-20s ${GREEN}%-10s${NC}\n" "resolvers.txt" "Available"
     else
         printf "%-20s ${RED}%-10s${NC}\n" "resolvers.txt" "Missing"
         all_tools_installed=false
     fi
-    
+
     if [ -d "$GF_PATTERNS_DIR" ]; then
         printf "%-20s ${GREEN}%-10s${NC}\n" "gf patterns" "Available"
     else
         printf "%-20s ${RED}%-10s${NC}\n" "gf patterns" "Missing"
         all_tools_installed=false
     fi
-    
+
     if [ -f "$CONFIG_FILE" ]; then
         printf "%-20s ${GREEN}%-10s${NC}\n" "config.conf" "Available"
     else
         printf "%-20s ${RED}%-10s${NC}\n" "config.conf" "Missing"
         all_tools_installed=false
     fi
-    
+
     if [ "$all_tools_installed" = true ]; then
         echo -e "${GREEN}[✓] All components verified successfully${NC}"
     else
@@ -462,7 +480,7 @@ main() {
     download_wordlists
     create_config
     verify_installation
-    
+
     echo -e "\n${GREEN}[✓] Installation completed successfully${NC}"
     echo -e "${YELLOW}[!] Please ensure your PATH includes $TOOLS_DIR and $HOME/go/bin${NC}"
     echo -e "${YELLOW}[!] You may need to restart your terminal or source your shell configuration${NC}"
