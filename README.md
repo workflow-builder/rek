@@ -7,6 +7,32 @@ REK is a comprehensive reconnaissance toolkit designed for ethical hackers and b
 
 **Authors:** Jayresearcher, NarutoX, Ninja
 
+
+## 🤖 LLM Assistant (Local + Remote)
+
+REK now includes an LLM assistant for recon guidance without removing existing workflows.
+
+- **Local mode** (default): uses an Ollama-compatible endpoint (`/api/generate`)
+- **Remote mode**: uses an OpenAI-compatible Chat Completions endpoint (`/chat/completions`)
+- **Config storage**: optional saved config at `~/.rek_llm_config.json` (chmod `600`)
+
+### CLI Examples
+
+```bash
+# Local model
+python3 rek.py --llm-prompt "Suggest recon steps for example.com" --llm-provider local --llm-model llama3.1
+
+# Remote API (OpenAI-compatible)
+python3 rek.py --llm-prompt "Prioritize my findings" --llm-provider remote --llm-api-key sk-***
+```
+
+### Interactive Mode
+
+Run `python3 rek.py` and select **REK LLM Assistant** from the main menu to:
+1. Ask with local model
+2. Ask with remote API
+3. Save/update default provider/model/URLs/API key
+
 ## 🚀 Automated Playbook System
 
 ### Core Playbook Features

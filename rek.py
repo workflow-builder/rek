@@ -8,6 +8,7 @@ import argparse
 import logging
 import pandas as pd
 import os
+import json
 from typing import List, Set, Dict
 from urllib.parse import urlparse
 from Wappalyzer import Wappalyzer, WebPage
@@ -189,7 +190,15 @@ class SubdomainScanner:
         tasks = [check_subdomain(subdomain) for subdomain in wordlist]
         await asyncio.gather(*tasks)
 
-    async def enumerate_subdomains(self, domain: str, output_file: str, github_token: str = None, max_commits: int = 50, skip_forks: bool = True):
+    async def enumerate_subdomains(
+        self,
+        domain: str,
+        output_file: str,
+        github_token: str = None,
+        max_commits: int = 50,
+        skip_forks: bool = True,
+        hibp_key: str = None
+    ):
         """Enumerate subdomains and run email search in parallel."""
         if not self.silent:
             logger.info(colored(f"Starting subdomain enumeration for {domain}", "green"))
@@ -198,7 +207,7 @@ class SubdomainScanner:
         email_output = f"{os.path.splitext(output_file)[0]}_emails.csv" if output_file else "email_results.csv"
         email_thread = threading.Thread(
             target=self.email_searcher.run,
-            args=(domain, None, github_token, email_output, max_commits, skip_forks)
+            args=(domain, None, github_token, email_output, max_commits, skip_forks, hibp_key)
         )
         email_thread.start()
 
@@ -242,7 +251,7 @@ class SubdomainScanner:
         if not self.silent:
             logger.info(colored(f"Using {len(combined_wordlist)} unique subdomains for DNS validation", "green"))
         semaphore = asyncio.Semaphore(self.concurrency)
-        await self.dns_brute_force(domain, wordlist, semaphore)
+        await self.dns_brute_force(domain, combined_wordlist, semaphore)
 
         # Step 5: Save validated subdomains
         validated_output = "results_dns_validated.txt" if not output_file else f"{os.path.splitext(output_file)[0]}_dns_validated.txt"
@@ -293,6 +302,103 @@ class WordlistGeneratorWrapper:
             print(colored(f"[!] Error importing REK Wordlist Generator: {e}", "red"))
         except Exception as e:
             print(colored(f"[!] Error running wordlist generator: {e}", "red"))
+
+
+
+
+class LLMAssistant:
+    """Simple LLM helper supporting local endpoints and remote API providers."""
+
+    def __init__(self, silent: bool = False, timeout: int = 30):
+        self.silent = silent
+        self.timeout = timeout
+        self.config_path = os.path.expanduser("~/.rek_llm_config.json")
+
+    def _load_config(self) -> Dict:
+        if not os.path.exists(self.config_path):
+            return {}
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception as e:
+            if not self.silent:
+                logger.warning(colored(f"Could not read LLM config: {e}", "yellow"))
+            return {}
+
+    def _save_config(self, config: Dict) -> None:
+        try:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            os.chmod(self.config_path, 0o600)
+            if not self.silent:
+                logger.info(colored(f"Saved LLM config to {self.config_path}", "green"))
+        except Exception as e:
+            if not self.silent:
+                logger.error(colored(f"Failed to save LLM config: {e}", "red"))
+
+    def update_config(self, provider: str = None, model: str = None, local_url: str = None, remote_url: str = None, api_key: str = None):
+        config = self._load_config()
+        if provider:
+            config['provider'] = provider
+        if model:
+            config['model'] = model
+        if local_url:
+            config['local_url'] = local_url
+        if remote_url:
+            config['remote_url'] = remote_url
+        if api_key:
+            config['api_key'] = api_key
+        self._save_config(config)
+
+    def _call_ollama(self, prompt: str, model: str, base_url: str) -> str:
+        resp = requests.post(
+            f"{base_url.rstrip('/')}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+            timeout=self.timeout
+        )
+        resp.raise_for_status()
+        return resp.json().get('response', '').strip()
+
+    def _call_openai_compatible(self, prompt: str, model: str, base_url: str, api_key: str) -> str:
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a cybersecurity assistant helping with ethical security research."},
+                {"role": "user", "content": prompt}
+            ]
+        }
+        resp = requests.post(
+            f"{base_url.rstrip('/')}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=self.timeout
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        choices = data.get('choices', [])
+        if not choices:
+            return ""
+        return choices[0].get('message', {}).get('content', '').strip()
+
+    def ask(self, prompt: str, provider: str = None, model: str = None, local_url: str = None, remote_url: str = None, api_key: str = None) -> str:
+        config = self._load_config()
+        provider = (provider or config.get('provider') or 'local').lower()
+        model = model or config.get('model') or ('llama3.1' if provider == 'local' else 'gpt-4o-mini')
+        local_url = local_url or config.get('local_url') or 'http://127.0.0.1:11434'
+        remote_url = remote_url or config.get('remote_url') or 'https://api.openai.com/v1'
+        api_key = api_key or config.get('api_key') or os.getenv('OPENAI_API_KEY')
+
+        if provider == 'local':
+            return self._call_ollama(prompt, model, local_url)
+
+        if provider == 'remote':
+            if not api_key:
+                raise ValueError("Remote provider selected but no API key was provided. Use --llm-api-key or configure it in menu option 7.")
+            return self._call_openai_compatible(prompt, model, remote_url, api_key)
+
+        raise ValueError("Unsupported provider. Use 'local' or 'remote'.")
 
 
 class HTTPStatusChecker:
@@ -906,6 +1012,7 @@ class ReconTool:
         self.dir_scanner = DirectoryScanner(args.timeout, args.concurrency, args.depth, args.silent)
         self.email_searcher = EmailSearcher(args.timeout, args.silent)
         self.wordlist_generator = WordlistGeneratorWrapper(args.silent)
+        self.llm_assistant = LLMAssistant(args.silent, args.timeout)
         self.silent = args.silent
         self.default_input_file = "http_results.csv"
 
@@ -937,8 +1044,9 @@ class ReconTool:
         print(colored("4. Directory Scanning", "green"))
         print(colored("5. REK Email Search", "green"))
         print(colored("6. REK Wordlist Generator", "green"))
-        print(colored("7. Exit", "red"))
-        return input(colored("Select an option (1-7): ", "yellow"))
+        print(colored("7. REK LLM Assistant", "green"))
+        print(colored("8. Exit", "red"))
+        return input(colored("Select an option (1-8): ", "yellow"))
 
     def display_recon_menu(self, show_examples: bool = False):
         """Display the Recon Tool menu with colors."""
@@ -1268,6 +1376,8 @@ class ReconTool:
     def identify_task(self):
         """Identify which task to run based on provided arguments."""
         args = self.args
+        if args.llm_prompt:
+            return "llm"
         if args.email_domain or args.email_username or args.org:
             return "email"
         if args.domain:
@@ -1303,6 +1413,12 @@ class ReconTool:
             parser.add_argument('-r', '--retries', type=int, default=3, help="Number of retries for failed requests")
             parser.add_argument('--depth', type=int, default=5, help="Maximum crawling depth for directory scanning (1-10)")
             parser.add_argument('--silent', action='store_true', help="Run in silent mode (only show main status messages)")
+            parser.add_argument('--llm-prompt', help="Prompt to send to REK LLM assistant")
+            parser.add_argument('--llm-provider', choices=['local', 'remote'], help="LLM provider mode")
+            parser.add_argument('--llm-model', help="LLM model name")
+            parser.add_argument('--llm-local-url', help="Local LLM base URL (Ollama-compatible)")
+            parser.add_argument('--llm-remote-url', help="Remote LLM API base URL (OpenAI-compatible)")
+            parser.add_argument('--llm-api-key', help="Remote LLM API key")
 
             if recon_choice == '1':
                 args_list = ['-d', 'xyz.com', '-o', 'results.txt']
@@ -1348,6 +1464,12 @@ class ReconTool:
                 parser.add_argument('-r', '--retries', type=int, default=3, help="Number of retries for failed requests")
                 parser.add_argument('--depth', type=int, default=5, help="Maximum crawling depth for directory scanning (1-10)")
                 parser.add_argument('--silent', action='store_true', help="Run in silent mode (only show main status messages)")
+                parser.add_argument('--llm-prompt', help="Prompt to send to REK LLM assistant")
+                parser.add_argument('--llm-provider', choices=['local', 'remote'], help="LLM provider mode")
+                parser.add_argument('--llm-model', help="LLM model name")
+                parser.add_argument('--llm-local-url', help="Local LLM base URL (Ollama-compatible)")
+                parser.add_argument('--llm-remote-url', help="Remote LLM API base URL (OpenAI-compatible)")
+                parser.add_argument('--llm-api-key', help="Remote LLM API key")
 
                 args = parser.parse_args(args_list)
             except Exception as e:
@@ -1434,7 +1556,8 @@ class ReconTool:
             args.output or "results.txt",
             args.token,
             args.limit_commits,
-            args.skip_forks
+            args.skip_forks,
+            args.hibp_key
         ))
         # Run email search if domain is provided
         email_output = f"{os.path.splitext(args.output or 'results.txt')[0]}_emails.csv"
@@ -1507,6 +1630,59 @@ class ReconTool:
         if not self.silent:
             print(colored("Finished Email Search.", "green"))
 
+    def run_llm_assistant(self, args=None):
+        """Run LLM assistant in CLI mode or interactively."""
+        if args and getattr(args, 'llm_prompt', None):
+            try:
+                response = self.llm_assistant.ask(
+                    prompt=args.llm_prompt,
+                    provider=args.llm_provider,
+                    model=args.llm_model,
+                    local_url=args.llm_local_url,
+                    remote_url=args.llm_remote_url,
+                    api_key=args.llm_api_key
+                )
+                print(colored("\nLLM Response:\n", "cyan", attrs=["bold"]))
+                print(response)
+            except Exception as e:
+                print(colored(f"LLM request failed: {e}", "red"))
+            return
+
+        print(colored("\n🤖 REK LLM Assistant", "cyan", attrs=["bold"]))
+        print(colored("1. Ask using local model (Ollama compatible)", "green"))
+        print(colored("2. Ask using remote API (OpenAI-compatible)", "green"))
+        print(colored("3. Save/Update LLM configuration", "green"))
+        print(colored("4. Back", "red"))
+        choice = input(colored("Select an option (1-4): ", "yellow")).strip()
+
+        if choice in ('1', '2'):
+            provider = 'local' if choice == '1' else 'remote'
+            prompt = input(colored("Prompt: ", "yellow")).strip()
+            model = input(colored("Model (optional): ", "yellow")).strip() or None
+            local_url = input(colored("Local URL (optional, e.g., http://127.0.0.1:11434): ", "yellow")).strip() or None
+            remote_url = input(colored("Remote URL (optional, e.g., https://api.openai.com/v1): ", "yellow")).strip() or None
+            api_key = None
+            if provider == 'remote':
+                api_key = input(colored("API key (optional if saved/env): ", "yellow")).strip() or None
+            try:
+                response = self.llm_assistant.ask(prompt, provider, model, local_url, remote_url, api_key)
+                print(colored("\nLLM Response:\n", "cyan", attrs=["bold"]))
+                print(response)
+            except Exception as e:
+                print(colored(f"LLM request failed: {e}", "red"))
+        elif choice == '3':
+            provider = input(colored("Default provider [local/remote] (optional): ", "yellow")).strip() or None
+            model = input(colored("Default model (optional): ", "yellow")).strip() or None
+            local_url = input(colored("Default local URL (optional): ", "yellow")).strip() or None
+            remote_url = input(colored("Default remote URL (optional): ", "yellow")).strip() or None
+            api_key = input(colored("Default remote API key (optional): ", "yellow")).strip() or None
+            self.llm_assistant.update_config(provider, model, local_url, remote_url, api_key)
+            print(colored("LLM configuration updated.", "green"))
+        elif choice == '4':
+            return
+        else:
+            print(colored("Invalid option. Please select 1-4.", "red"))
+
     def run(self):
         """Run the recon tool based on arguments or interactively."""
         self.display_banner()
@@ -1521,6 +1697,8 @@ class ReconTool:
                 self.run_directory_scan()
             elif task == "email":
                 self.run_email_search()
+            elif task == "llm":
+                self.run_llm_assistant(self.args)
             return
 
         while True:
@@ -1552,10 +1730,12 @@ class ReconTool:
             elif choice == '6':
                 self.wordlist_generator.run_interactive()
             elif choice == '7':
+                self.run_llm_assistant()
+            elif choice == '8':
                 print(colored("Exiting REK. Stay ethical!", "cyan"))
                 break
             else:
-                print(colored("Invalid option. Please select 1-7.", "red"))
+                print(colored("Invalid option. Please select 1-8.", "red"))
 
 def print_help():
     """Print detailed help information for REK tool."""
@@ -1572,7 +1752,8 @@ MENU OPTIONS:
     4. Directory Scanning    - Scan for directories and files on web servers
     5. REK Email Search      - Search for email addresses in GitHub repositories
     6. REK Wordlist Generator- Generate and download wordlists for testing
-    7. Exit                  - Exit the application
+    7. REK LLM Assistant     - Query local or remote LLMs for recon guidance
+    8. Exit                  - Exit the application
 
 COMMAND LINE OPTIONS:
 
@@ -1613,6 +1794,12 @@ Email Search:
     -o, --output FILE         Output CSV file (default: email_results.csv)
 
 General Options:
+    --llm-prompt TEXT        Prompt to send to the LLM assistant
+    --llm-provider MODE      LLM provider: local or remote
+    --llm-model MODEL        LLM model name
+    --llm-local-url URL      Local LLM endpoint (Ollama-compatible)
+    --llm-remote-url URL     Remote API base URL (OpenAI-compatible)
+    --llm-api-key KEY        Remote API key
     --silent                  Run in silent mode (minimal output)
     -h, --help               Show this help message
 
@@ -1634,6 +1821,12 @@ EXAMPLES:
 
     # Email search by organization
     python3 rek.py --org microsoft --token ghp_xxx --limit-commits 100
+
+    # LLM assistant with local model
+    python3 rek.py --llm-prompt "Suggest recon steps for target.com" --llm-provider local --llm-model llama3.1
+
+    # LLM assistant with remote API
+    python3 rek.py --llm-prompt "Prioritize findings" --llm-provider remote --llm-api-key sk-***
 
 For more information, visit: https://github.com/your-repo/rek-toolkit
 """
@@ -1661,6 +1854,12 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--retries', type=int, default=3, help="Number of retries for failed requests")
     parser.add_argument('--depth', type=int, default=5, help="Maximum crawling depth for directory scanning (1-10)")
     parser.add_argument('--silent', action='store_true', help="Run in silent mode (only show main status messages)")
+    parser.add_argument('--llm-prompt', help="Prompt to send to REK LLM assistant")
+    parser.add_argument('--llm-provider', choices=['local', 'remote'], help="LLM provider mode")
+    parser.add_argument('--llm-model', help="LLM model name")
+    parser.add_argument('--llm-local-url', help="Local LLM base URL (Ollama-compatible)")
+    parser.add_argument('--llm-remote-url', help="Remote LLM API base URL (OpenAI-compatible)")
+    parser.add_argument('--llm-api-key', help="Remote LLM API key")
 
     args = parser.parse_args()
 
