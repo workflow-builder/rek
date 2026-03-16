@@ -6,6 +6,7 @@
 !wordlists/*.txt
 # Explicitly ignore specific files and directories
 results/
+ui_runs/
 venv/
 pipelines/
 tools/
