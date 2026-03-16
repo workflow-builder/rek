@@ -7,6 +7,32 @@ REK is a comprehensive reconnaissance toolkit designed for ethical hackers and b
 
 **Authors:** Jayresearcher, NarutoX, Ninja
 
+
+## 🤖 LLM Assistant (Local + Remote)
+
+REK now includes an LLM assistant for recon guidance without removing existing workflows.
+
+- **Local mode** (default): uses an Ollama-compatible endpoint (`/api/generate`)
+- **Remote mode**: uses an OpenAI-compatible Chat Completions endpoint (`/chat/completions`)
+- **Config storage**: optional saved config at `~/.rek_llm_config.json` (chmod `600`)
+
+### CLI Examples
+
+```bash
+# Local model
+python3 rek.py --llm-prompt "Suggest recon steps for example.com" --llm-provider local --llm-model llama3.1
+
+# Remote API (OpenAI-compatible)
+python3 rek.py --llm-prompt "Prioritize my findings" --llm-provider remote --llm-api-key sk-***
+```
+
+### Interactive Mode
+
+Run `python3 rek.py` and select **REK LLM Assistant** from the main menu to:
+1. Ask with local model
+2. Ask with remote API
+3. Save/update default provider/model/URLs/API key
+
 ## 🚀 Automated Playbook System
 
 ### Core Playbook Features
@@ -63,11 +89,11 @@ chmod +x playbook/install-script.sh
 REK now includes a lightweight built-in Python web UI to simplify navigation, monitor live run logs, and inspect generated results without digging through folders manually.
 
 ### Features
-- Launch both playbook scans and `rek.py` scan modes from the UI.
-- Supports CLI-like options for subdomain, HTTP status, directory scan, and email search workflows.
+- Start recon playbooks (`v1`, `v2`, `standard`) from a browser form.
 - Track scan status (`queued`, `running`, `completed`, `failed`) with persisted job history in `ui_runs/jobs.json`.
-- Monitor logs with live auto-refresh and command preview on each job page.
+- Monitor logs with auto-refresh on a dedicated log page.
 - Browse result files under `results/` directly from the UI.
+- View an architecture-at-a-glance panel summarizing REK pipeline phases for faster navigation.
 
 ### Run the UI
 ```bash
