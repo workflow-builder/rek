@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import shlex
 import subprocess
 import threading
@@ -74,6 +75,7 @@ class Job:
     command: List[str] = field(default_factory=list)
     return_code: Optional[int] = None
     notes: str = ""
+    env_vars: Dict[str, str] = field(default_factory=dict)
 
 
 RUNS_DIR.mkdir(exist_ok=True)
@@ -139,7 +141,7 @@ def _bool_flag(form: dict, key: str, flag: str, cmd: List[str]) -> None:
         cmd.append(flag)
 
 
-def _build_command(form: dict, result_dir: Path) -> tuple[List[str], str, str, str]:
+def _build_command(form: dict, result_dir: Path) -> tuple[List[str], str, str, str, Dict[str, str]]:
     mode = form.get("mode", ["playbook"])[0].strip()
     domain = form.get("domain", [""])[0].strip().lower()
 
@@ -149,14 +151,23 @@ def _build_command(form: dict, result_dir: Path) -> tuple[List[str], str, str, s
         if not domain or version not in PLAYBOOKS:
             raise ValueError("Playbook mode requires valid domain and playbook version.")
         script = PLAYBOOKS[version]
-        cmd = ["bash", str(script), "-d", domain, "-t", threads, "-o", str(result_dir)]
-        _arg_if(form, "chaos_key", "--chaos-key", cmd)
-        _arg_if(form, "github_token", "--github-token", cmd)
-        _bool_flag(form, "skip_portscan", "--skip-portscan", cmd)
-        _bool_flag(form, "skip_jsanalysis", "--skip-jsanalysis", cmd)
-        _bool_flag(form, "skip_nuclei", "--skip-nuclei", cmd)
-        _bool_flag(form, "skip_subtakeover", "--skip-subtakeover", cmd)
-        return cmd, mode, domain, f"playbook={version}"
+        env_vars: Dict[str, str] = {}
+
+        if version == "v2":
+            # v2 script is primarily interactive and reads TARGET_URL from env when provided.
+            cmd = ["bash", str(script)]
+            env_vars["TARGET_URL"] = f"https://{domain}"
+            env_vars["THREADS"] = threads
+        else:
+            cmd = ["bash", str(script), "-d", domain, "-t", threads, "-o", str(result_dir)]
+            _arg_if(form, "chaos_key", "--chaos-key", cmd)
+            _arg_if(form, "github_token", "--github-token", cmd)
+            _bool_flag(form, "skip_portscan", "--skip-portscan", cmd)
+            _bool_flag(form, "skip_jsanalysis", "--skip-jsanalysis", cmd)
+            _bool_flag(form, "skip_nuclei", "--skip-nuclei", cmd)
+            _bool_flag(form, "skip_subtakeover", "--skip-subtakeover", cmd)
+
+        return cmd, mode, domain, f"playbook={version}", env_vars
 
     # mirrors rek.py CLI modes
     cmd = ["python3", str(ROOT_DIR / "rek.py")]
@@ -219,7 +230,7 @@ def _build_command(form: dict, result_dir: Path) -> tuple[List[str], str, str, s
 
     if not domain:
         domain = form.get("email_domain", [""])[0].strip() or form.get("org", [""])[0].strip() or form.get("email_username", [""])[0].strip() or "n/a"
-    return cmd, mode, domain, f"rek.py mode={mode}"
+    return cmd, mode, domain, f"rek.py mode={mode}", {}
 
 
 def _run_job(job_id: str) -> None:
@@ -240,11 +251,18 @@ def _run_job(job_id: str) -> None:
         process = subprocess.Popen(
             ["stdbuf", "-oL", "-eL", *job.command],
             cwd=ROOT_DIR,
+            env={**os.environ, **job.env_vars},
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
         )
+
+        if job.notes == "playbook=v2" and process.stdin and job.env_vars.get("TARGET_URL"):
+            process.stdin.write(f"{job.env_vars['TARGET_URL']}\n")
+            process.stdin.flush()
+            process.stdin.close()
 
         if process.stdout:
             for line in process.stdout:
@@ -331,7 +349,7 @@ class UIHandler(BaseHTTPRequestHandler):
         log_path = LOGS_DIR / f"{job_id}.log"
 
         try:
-            command, mode, domain, notes = _build_command(form, result_dir)
+            command, mode, domain, notes, env_vars = _build_command(form, result_dir)
         except Exception as exc:
             self._send_html(self.render_index(error=str(exc)), 400)
             return
@@ -344,6 +362,7 @@ class UIHandler(BaseHTTPRequestHandler):
             result_dir=str(result_dir.relative_to(ROOT_DIR)),
             command=command,
             notes=notes,
+            env_vars=env_vars,
         )
         with _lock:
             _jobs[job.id] = job
