@@ -11,10 +11,7 @@ import os
 import json
 from typing import List, Set, Dict
 from urllib.parse import urlparse
-from Wappalyzer import Wappalyzer, WebPage
 import sys
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 import time
 import re
 from termcolor import colored
@@ -645,6 +642,8 @@ class DirectoryScanner:
     def initialize_screenshot_driver(self):
         """Initialize the Selenium WebDriver for screenshots."""
         try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
             chrome_options = Options()
             chrome_options.add_argument('--headless')
             chrome_options.add_argument('--no-sandbox')
@@ -751,6 +750,7 @@ class DirectoryScanner:
             logger.info(colored(f"Detecting technologies for {url}", "green"))
         wordlist = []
         try:
+            from Wappalyzer import Wappalyzer, WebPage
             wappalyzer = Wappalyzer.latest()
             # Fix: Remove headers parameter as it's not supported in newer versions
             webpage = WebPage.new_from_url(url)

@@ -12,3 +12,4 @@ urllib3==2.5.0
 numpy==1.26.4
 tqdm==4.66.5
 tldextract
+flask>=3.0.0
