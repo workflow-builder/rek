@@ -64,9 +64,10 @@ REK now includes a lightweight built-in Python web UI to simplify navigation, mo
 
 ### Features
 - Start recon playbooks (`v1`, `v2`, `standard`) from a browser form.
-- Track scan status (`queued`, `running`, `completed`, `failed`).
-- Open per-run logs from the dashboard.
+- Track scan status (`queued`, `running`, `completed`, `failed`) with persisted job history in `ui_runs/jobs.json`.
+- Monitor logs with auto-refresh on a dedicated log page.
 - Browse result files under `results/` directly from the UI.
+- View an architecture-at-a-glance panel summarizing REK pipeline phases for faster navigation.
 
 ### Run the UI
 ```bash
