@@ -83,6 +83,25 @@ chmod +x playbook/install-script.sh
 ./playbook/install-script.sh
 ```
 
+
+## 🖥️ Web UI (Control Center)
+
+REK now includes a lightweight built-in Python web UI to simplify navigation, monitor live run logs, and inspect generated results without digging through folders manually.
+
+### Features
+- Start recon playbooks (`v1`, `v2`, `standard`) from a browser form.
+- Track scan status (`queued`, `running`, `completed`, `failed`) with persisted job history in `ui_runs/jobs.json`.
+- Monitor logs with auto-refresh on a dedicated log page.
+- Browse result files under `results/` directly from the UI.
+- View an architecture-at-a-glance panel summarizing REK pipeline phases for faster navigation.
+
+### Run the UI
+```bash
+pip install -r requirements.txt
+python3 ui_app.py
+```
+Then open: `http://localhost:5000`
+
 ## 📋 Playbook Architecture Wireframe
 
 ### High-Level System Architecture
