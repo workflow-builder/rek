@@ -62,7 +62,7 @@ class SubdomainScanner:
         ]
         self.email_searcher = EmailSearcher(timeout=timeout, silent=silent)
 
-    def normalize_domain(input: str) -> str:
+    def normalize_domain(self, input: str) -> str:
         """Remove path from domain for proper subdomain scan."""
         parsed = urlparse(input)
         if not parsed.netloc:
@@ -1561,7 +1561,7 @@ class ReconTool:
         if not self.silent:
             print(colored(f"Running Subdomain Enumeration for {args.domain}...", "green"))
 
-        clean_domain = normalize_domain(args.domain)
+        clean_domain = self.subdomain_scanner.normalize_domain(args.domain)
         asyncio.run(self.subdomain_scanner.enumerate_subdomains(
             clean_domain,
             args.output or "results.txt",
