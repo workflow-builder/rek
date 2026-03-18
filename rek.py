@@ -62,6 +62,14 @@ class SubdomainScanner:
         ]
         self.email_searcher = EmailSearcher(timeout=timeout, silent=silent)
 
+    def normalize_domain(self, input: str) -> str:
+        """Remove path from domain for proper subdomain scan."""
+        parsed = urlparse(input)
+        if not parsed.netloc:
+            parsed = urlparse("http://" + input)
+            
+        return parsed.netloc
+
     def load_wordlist(self) -> List[str]:
         """Load wordlist from file or use enhanced default."""
         if self.wordlist_path:
@@ -124,6 +132,7 @@ class SubdomainScanner:
         except Exception as e:
             if not self.silent:
                 logger.error(colored(f"Unexpected DNS Dumpster error: {e}", "red"))
+                
 
     def fetch_cert_transparency(self, domain: str) -> None:
         """Fetch subdomains from certificate transparency logs (e.g., crt.sh) with retry."""
@@ -1551,8 +1560,10 @@ class ReconTool:
             return
         if not self.silent:
             print(colored(f"Running Subdomain Enumeration for {args.domain}...", "green"))
+
+        clean_domain = self.subdomain_scanner.normalize_domain(args.domain)
         asyncio.run(self.subdomain_scanner.enumerate_subdomains(
-            args.domain,
+            clean_domain,
             args.output or "results.txt",
             args.token,
             args.limit_commits,
