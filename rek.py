@@ -1,3 +1,6 @@
+# Rek main driver 
+# Python Cross-Platform Edition by jackb898
+
 import warnings
 from urllib3.exceptions import NotOpenSSLWarning
 warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
@@ -27,6 +30,10 @@ from rek_wordlist_generator import REKWordlistGenerator
 import subprocess
 import glob
 from tldextract import extract
+import platform
+if platform.system() == "Windows":
+    import colorama
+    colorama.init()
 
 # Advanced feature modules (graceful import — missing installs won't crash startup)
 try:
@@ -1323,7 +1330,9 @@ class ReconTool:
     def list_playbooks(self):
         """List available playbook scripts in the playbook directory."""
         playbook_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "playbook")
-        playbook_files = glob.glob(os.path.join(playbook_dir, "rek-playbook*.sh"))
+        sh_files = glob.glob(os.path.join(playbook_dir, "rek-playbook*.sh"))
+        py_files = glob.glob(os.path.join(playbook_dir, "rek-playbook*.py"))
+        playbook_files = sh_files + py_files
         return sorted([os.path.basename(playbook) for playbook in playbook_files])
 
     def select_playbook(self):
@@ -1335,7 +1344,7 @@ class ReconTool:
 
         print(colored("\nAvailable Playbook Versions:", "cyan"))
         for i, playbook in enumerate(playbooks, 1):
-            version = playbook.replace('rek-playbook', '').replace('.sh', '')
+            version = playbook.replace('rek-playbook', '').replace('.sh', '').replace('.py', '')
             version = 'Original' if version == '' else f'v{version[2:]}'
             print(colored(f"[{i}] {version} ({playbook})", "green"))
 
@@ -1383,7 +1392,9 @@ class ReconTool:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         playbook_dir = os.path.join(script_dir, "playbook")
         playbook_path = os.path.join(playbook_dir, playbook_script)
-        install_script = os.path.join(playbook_dir, f"install-script{playbook_script.replace('rek-playbook', '')}")
+        base = playbook_script.replace('rek-playbook', '').replace('.sh', '')
+        ext = '.py' if platform.system() == 'Windows' else '.sh'
+        install_script = os.path.join(playbook_dir, f"install-script{base}")
         tools_dir = os.path.join(script_dir, "tools")
         config_path = os.path.join(script_dir, "config.conf")
         wordlists_dir = os.path.join(script_dir, "wordlists")
@@ -1401,18 +1412,19 @@ class ReconTool:
             return
 
         # Make scripts executable
-        try:
-            subprocess.run(["chmod", "+x", install_script], check=True, capture_output=True)
-            subprocess.run(["chmod", "+x", playbook_path], check=True, capture_output=True)
-
-        except subprocess.CalledProcessError as e:
-            print(colored(f"[!] Error making scripts executable: {e.stderr.decode()}", "red"))
-            return
+        # Replace the chmod block entirely (lines 1320-1326)
+        if platform.system() != "Windows":
+            try:
+                subprocess.run(["chmod", "+x", install_script], check=True, capture_output=True)
+                subprocess.run(["chmod", "+x", playbook_path], check=True, capture_output=True)
+            except subprocess.CalledProcessError as e:
+                print(colored(f"[!] Error making scripts executable: {e.stderr.decode()}", "red"))
+                return
 
         # Set up environment variables
         env = os.environ.copy()
         go_bin = os.path.expanduser("~/go/bin")
-        env["PATH"] = f"{tools_dir}:{go_bin}:{env.get('PATH', '')}"
+        env["PATH"] = os.pathsep.join([str(tools_dir), str(go_bin), env.get("PATH", "")])
         env["RECON_TOOLKIT_DIR"] = recon_toolkit_dir
         env["TOOLS_DIR"] = tools_dir
         env["CONFIG_PATH"] = config_path
@@ -1421,7 +1433,10 @@ class ReconTool:
         def stream_script(script_path, script_name, args=None):
             """Run a script and stream its output in real-time with combined stdout/stderr."""
             print(colored(f"[*] Running {script_name}...", "yellow"))
-            cmd = [script_path]
+            if script_path.endswith(".py"):
+                cmd = [sys.executable, script_path]
+            else:
+                cmd = [script_path]
             if args:
                 cmd.extend(args)
             try:
