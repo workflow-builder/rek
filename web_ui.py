@@ -895,7 +895,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .phase-arrow{width:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--border2);font-size:18px;user-select:none}
 
 /* ── Console tab ── */
-#panel-console{flex-direction:column}
+#panel-console{flex-direction:column;overflow:hidden}
 #console-toolbar{padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0}
 #console-toolbar select{background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;font-size:12px;padding:5px 8px;border-radius:4px}
 #console-label{font-size:11px;color:var(--text2);flex:1}
@@ -1350,6 +1350,9 @@ const TOOL_CATALOG = [
   {id:'gf-sqli',     label:'gf (sqli)',       cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: SQLi', inFile:'urls.txt', outFile:'gf-sqli.txt'},
   {id:'gf-ssrf',     label:'gf (ssrf)',       cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: SSRF', inFile:'urls.txt', outFile:'gf-ssrf.txt'},
   {id:'gf-redirect', label:'gf (redirect)',   cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: Redirect', inFile:'urls.txt', outFile:'gf-redirect.txt'},
+  {id:'gf-idor',     label:'gf (idor)',       cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: IDOR', inFile:'urls.txt', outFile:'gf-idor.txt'},
+  {id:'gf-lfi',      label:'gf (lfi)',        cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: LFI', inFile:'urls.txt', outFile:'gf-lfi.txt'},
+  {id:'gf-rce',      label:'gf (rce)',        cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: RCE', inFile:'urls.txt', outFile:'gf-rce.txt'},
   {id:'nuclei',      label:'nuclei',          cat:'Scanner',   color:'#ef4444', type:'go',     desc:'Template-based vuln scanner', inFile:'hosts-alive.txt', outFile:'nuclei.txt'},
   {id:'getjs',       label:'getJS',           cat:'JS',        color:'#10b981', type:'go',     desc:'Extract JS files', inFile:'hosts-alive.txt', outFile:'js-files.txt'},
   {id:'cariddi',     label:'cariddi',         cat:'JS',        color:'#10b981', type:'go',     desc:'JS secrets & endpoints', inFile:'hosts-alive.txt', outFile:'cariddi.txt'},
@@ -2421,8 +2424,23 @@ async function previewBuilderScript(){
   const r=await fetch('/api/scan/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,tools,preview_only:true})});
   const d=await r.json();
   if(d.error){toast(d.error,'err');return;}
-  switchTab('intel');
-  addChatMessage('bot','## Pipeline Script Preview\n\n```bash\n'+(d.script||'')+'```');
+  // Show script in a modal overlay instead of switching tabs
+  const existing=document.getElementById('script-preview-modal');
+  if(existing) existing.remove();
+  const modal=document.createElement('div');
+  modal.id='script-preview-modal';
+  modal.style.cssText='position:fixed;inset:0;background:#000c;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML=`
+    <div style="background:var(--card);border:1px solid var(--border2);border-radius:8px;width:100%;max-width:720px;max-height:85vh;display:flex;flex-direction:column;font-family:var(--font)">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;font-weight:700;color:var(--cyan)">📄 Pipeline Script Preview</span>
+        <button onclick="document.getElementById('script-preview-modal').remove()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;line-height:1">×</button>
+      </div>
+      <pre style="flex:1;overflow-y:auto;margin:0;padding:16px;background:var(--terminal);font-size:11px;line-height:1.7;color:var(--green);white-space:pre;border-radius:0 0 8px 8px">${(d.script||'').replace(/</g,'&lt;')}</pre>
+    </div>
+  `;
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+  document.body.appendChild(modal);
 }
 
 // =====================================================================
@@ -2432,6 +2450,7 @@ async function init(){
   await checkPrerequisites();
   await loadConfig();
   refreshHistory();
+  renderToolbox(); // populate builder toolbox with correct status dots after prereqs loaded
 }
 init();
 setInterval(()=>{
@@ -2781,7 +2800,10 @@ def api_llm():
         )
         return jsonify({"response": response})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        err_str = str(e)
+        if "Connection refused" in err_str or "Max retries exceeded" in err_str:
+            return jsonify({"error": "Cannot reach LLM. Run `ollama serve` for local, or check Base URL / API Key for remote."}), 503
+        return jsonify({"error": f"LLM error: {err_str[:200]}"}), 500
 
 
 @app.route("/api/config/get")
@@ -2970,7 +2992,7 @@ def api_llm_analyze():
 
     try:
         sys.path.insert(0, str(ROOT_DIR))
-        from rek import LLMAssistant
+        from rek import LLMAssistant  # type: ignore
         assistant = LLMAssistant(silent=True, timeout=120)
         response = assistant.ask(
             prompt=full_prompt,
@@ -2980,7 +3002,15 @@ def api_llm_analyze():
         )
         return jsonify({"response": response})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        err_str = str(e)
+        if "Connection refused" in err_str or "Max retries exceeded" in err_str or "NewConnectionError" in err_str:
+            return jsonify({"error": (
+                "Cannot reach the LLM. If using Local (Ollama), make sure Ollama is running: `ollama serve`. "
+                "If using Remote, check your Base URL and API Key in the Intelligence tab."
+            )}), 503
+        if "API key" in err_str or "api_key" in err_str.lower():
+            return jsonify({"error": "No API key provided. Add your key in the Intelligence tab → API KEY field."}), 400
+        return jsonify({"error": f"LLM error: {err_str[:200]}"}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -3007,6 +3037,9 @@ _TOOL_CMD_TEMPLATES = {
     "gf-sqli":     "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf sqli {F} > {O}/gf-sqli.txt || true",
     "gf-ssrf":     "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf ssrf {F} > {O}/gf-ssrf.txt || true",
     "gf-redirect": "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf redirect {F} > {O}/gf-redirect.txt || true",
+    "gf-idor":     "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf idor {F} > {O}/gf-idor.txt || true",
+    "gf-lfi":      "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf lfi {F} > {O}/gf-lfi.txt || true",
+    "gf-rce":      "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf rce {F} > {O}/gf-rce.txt || true",
     "nuclei":      "[ -f {O}/hosts-alive.txt ] && nuclei -l {O}/hosts-alive.txt -o {O}/nuclei.txt -silent {F}",
     "getjs":       "[ -f {O}/hosts-alive.txt ] && getJS --input {O}/hosts-alive.txt --output {O}/js-files.txt {F}",
     "cariddi":     "[ -f {O}/hosts-alive.txt ] && cariddi -l {O}/hosts-alive.txt -s -o {O}/cariddi.txt {F}",
@@ -3027,7 +3060,7 @@ def _build_pipeline_script(domain: str, tools: List[dict], outdir: str) -> str:
     """Generate a bash script for the custom pipeline."""
     lines = [
         "#!/usr/bin/env bash",
-        "set -euo pipefail",
+        "set -uo pipefail",
         f'DOMAIN="{domain}"',
         f'OUTDIR="{outdir}"',
         'mkdir -p "$OUTDIR"',
@@ -3121,7 +3154,7 @@ def api_ai_monitor():
         old = _ai_monitors.pop(job_id, None)
         if old:
             old.stop()
-        if job.status not in ("running",):
+        if job.status not in ("running", "queued"):
             return jsonify({"error": "job is not currently running"}), 400
         monitor = AIMonitor(job_id, job.log_path, provider=provider, model=model)
         _ai_monitors[job_id] = monitor
