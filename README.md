@@ -1,11 +1,13 @@
 
-# REK - Reconnaissance Toolkit
+# REK - Reconnaissance Toolkit (Cross-Platform Edition)
 
 **A Modern Recon Playbook for Bug Bounty Hunters**
 
 REK is a comprehensive reconnaissance toolkit designed for ethical hackers and bug bounty hunters. It provides automated reconnaissance pipelines through sophisticated playbooks, along with modular subdomain enumeration, HTTP status checking, directory scanning, and email search capabilities.
 
-**Authors:** Jayresearcher, NarutoX, Ninja
+This branch is a modified Cross-Platform edition that features Python scripts for the install and playbook scripts.
+
+**Authors:** Jayresearcher, NarutoX, Ninja, jackb898
 
 
 ## 🤖 LLM Assistant (Local + Remote)
@@ -38,9 +40,11 @@ Run `python3 rek.py` and select **REK LLM Assistant** from the main menu to:
 ### Core Playbook Features
 The REK toolkit includes two main automated reconnaissance playbooks:
 
-- **[rek-playbook-v1.sh](playbook/rek-playbook-v1.sh)**: Enhanced version with advanced features and better error handling
-- **[rek-playbook-v2.sh](playbook/rek-playbook-v2.sh)**: Enhanced URL crawler with better outcomes
-- **[rek-playbook.sh](playbook/rek-playbook.sh)**: Standard reconnaissance pipeline
+- **[rek-playbook-v1.py](playbook/rek-playbook-v1.py)**: Enhanced version with advanced features and better error handling
+- **[rek-playbook-v2.py](playbook/rek-playbook-v2.py)**: Enhanced URL crawler with better outcomes
+- **[rek-playbook.py](playbook/rek-playbook.py)**: Standard reconnaissance pipeline
+
+Note these are now Python scripts with the same functionality as the Shell scripts. If you are on a Unix system, you can use either the .sh or the .py versions. On Windows you must use the Python versions.
 
 ### Quick Start with Playbooks
 
@@ -50,18 +54,19 @@ The REK toolkit includes two main automated reconnaissance playbooks:
 python3 rek.py
 
 # Select option 1: Run Recon Playbook
-# Choose your preferred playbook version
+# Choose your preferred playbook version (can use .sh versions on Unix, or use Python version on Unix or Windows)
 # Enter target domain and thread count
 # The system automatically installs dependencies and runs the playbook
 ```
 
 The interactive mode provides:
-- Automatic dependency installation via `install-script.sh`
+- Automatic dependency installation via `install-script.sh` or `install-script.py`
 - Playbook version selection
 - Real-time output streaming
 - Error handling and validation
 
 #### Direct Playbook Execution
+For Linux:
 ```bash
 # Make playbook executable
 chmod +x playbook/rek-playbook-v1.sh
@@ -76,11 +81,29 @@ chmod +x playbook/rek-playbook-v1.sh
 ./playbook/rek-playbook-v1.sh -d example.com --skip-portscan --skip-jsanalysis
 ```
 
+For Windows: 
+```
+# Run basic reconnaissance
+python ./playbook/rek-playbook-v1.py -d example.com
+
+# Run with custom configuration
+python ./playbook/rek-playbook-v1.py -d example.com -t 200 --chaos-key YOUR_KEY --github-token YOUR_TOKEN
+
+# Skip specific phases
+python ./playbook/rek-playbook-v1.sh -d example.com --skip-portscan --skip-jsanalysis
+```
 #### Manual Installation
+For Linux:
 ```bash
 # Install all prerequisites and tools
 chmod +x playbook/install-script.sh
 ./playbook/install-script.sh
+```
+
+For Windows:
+```bash
+# Install all prerequisites and tools
+python ./playbook/install-script.py
 ```
 
 
@@ -318,30 +341,32 @@ Then open: `http://localhost:5000`
 ## 🛠️ Playbook Command Reference
 
 ### Basic Usage
+(Choose .sh if Unix, or .py if Windows system)
 ```bash
 # Quick reconnaissance
-./playbook/rek-playbook-v1.sh -d target.com
+./playbook/rek-playbook-v1.[sh/py] -d target.com
 
 # Custom thread count
-./playbook/rek-playbook-v1.sh -d target.com -t 200
+./playbook/rek-playbook-v1.[sh/py] -d target.com -t 200
 
 # Use API keys for enhanced results
-./playbook/rek-playbook-v1.sh -d target.com \
+./playbook/rek-playbook-v1.[sh/py] -d target.com \
   --chaos-key YOUR_CHAOS_KEY \
   --github-token YOUR_GITHUB_TOKEN \
   --gitlab-token YOUR_GITLAB_TOKEN
 ```
 
 ### Phase Control
+(Choose .sh if Unix, or .py if Windows system)
 ```bash
 # Skip specific phases
-./playbook/rek-playbook-v1.sh -d target.com \
+./playbook/rek-playbook-v1.[sh/py] -d target.com \
   --skip-portscan \
   --skip-jsanalysis \
   --skip-vulnanalysis
 
 # Run only subdomain discovery
-./playbook/rek-playbook-v1.sh -d target.com \
+./playbook/rek-playbook-v1.[sh/py] -d target.com \
   --skip-permutation \
   --skip-fingerprint \
   --skip-portscan \
@@ -353,13 +378,13 @@ Then open: `http://localhost:5000`
 ### Configuration Options
 ```bash
 # Custom configuration file
-./playbook/rek-playbook-v1.sh -d target.com -c /path/to/config.conf
+./playbook/rek-playbook-v1.[sh/py] -d target.com -c /path/to/config.conf
 
 # Custom output directory
-./playbook/rek-playbook-v1.sh -d target.com -o /path/to/results
+./playbook/rek-playbook-v1.[sh/py] -d target.com -o /path/to/results
 
 # Help and options
-./playbook/rek-playbook-v1.sh --help
+./playbook/rek-playbook-v1.[sh/py] --help
 ```
 
 ## 📊 Output Structure
@@ -426,9 +451,9 @@ brew install chromium
 ### Tool Dependencies
 The toolkit includes installation scripts for external tools:
 ```bash
-# Run the installation script for your platform
-chmod +x playbook/install-script.sh
-./playbook/install-script.sh
+# Run the installation script for your platform (.sh for Unix, .py for Windows or Unix)
+chmod +x playbook/install-script.[sh/py]
+./playbook/install-script.[sh/py]
 ```
 
 ## 📚 Technical Usage
