@@ -28,6 +28,67 @@ import subprocess
 import glob
 from tldextract import extract
 
+# Advanced feature modules (graceful import — missing installs won't crash startup)
+try:
+    from rek_cloud_recon import CloudRecon
+    _CLOUD_RECON_AVAILABLE = True
+except ImportError:
+    _CLOUD_RECON_AVAILABLE = False
+
+try:
+    from rek_takeover import TakeoverDetector
+    _TAKEOVER_AVAILABLE = True
+except ImportError:
+    _TAKEOVER_AVAILABLE = False
+
+try:
+    from rek_param_discovery import ParamDiscovery
+    _PARAM_DISCO_AVAILABLE = True
+except ImportError:
+    _PARAM_DISCO_AVAILABLE = False
+
+try:
+    from rek_headers_audit import HeadersAuditor
+    _HEADERS_AUDIT_AVAILABLE = True
+except ImportError:
+    _HEADERS_AUDIT_AVAILABLE = False
+
+try:
+    from rek_favicon import FaviconScanner
+    _FAVICON_AVAILABLE = True
+except ImportError:
+    _FAVICON_AVAILABLE = False
+
+try:
+    from rek_github_dorking import GitHubDorker
+    _GITHUB_DORK_AVAILABLE = True
+except ImportError:
+    _GITHUB_DORK_AVAILABLE = False
+
+try:
+    from rek_asn import ASNRecon
+    _ASN_AVAILABLE = True
+except ImportError:
+    _ASN_AVAILABLE = False
+
+try:
+    from rek_notify import NotificationManager
+    _NOTIFY_AVAILABLE = True
+except ImportError:
+    _NOTIFY_AVAILABLE = False
+
+try:
+    from rek_monitor import ContinuousMonitor
+    _MONITOR_AVAILABLE = True
+except ImportError:
+    _MONITOR_AVAILABLE = False
+
+try:
+    from rek_scope import ScopeManager
+    _SCOPE_AVAILABLE = True
+except ImportError:
+    _SCOPE_AVAILABLE = False
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -1024,6 +1085,14 @@ class ReconTool:
         self.llm_assistant = LLMAssistant(args.silent, args.timeout)
         self.silent = args.silent
         self.default_input_file = "http_results.csv"
+        # Scope manager (loaded if scope file args provided)
+        self.scope_manager = None
+        if _SCOPE_AVAILABLE and (getattr(args, 'scope_file', None) or getattr(args, 'oos_file', None)):
+            self.scope_manager = ScopeManager(
+                scope_file=getattr(args, 'scope_file', None),
+                out_of_scope_file=getattr(args, 'oos_file', None),
+                silent=args.silent,
+            )
 
     def display_banner(self):
         """Display the banner."""
@@ -1046,16 +1115,31 @@ class ReconTool:
 
     def display_rek_menu(self):
         """Display the initial REK menu with colors."""
-        print(colored("REK Menu", "cyan", attrs=["bold"]))
-        print(colored("1. Run Recon Playbook", "green"))
-        print(colored("2. Subdomain Enumeration", "green"))
-        print(colored("3. HTTP Status Checking", "green"))
-        print(colored("4. Directory Scanning", "green"))
-        print(colored("5. REK Email Search", "green"))
-        print(colored("6. REK Wordlist Generator", "green"))
-        print(colored("7. REK LLM Assistant", "green"))
-        print(colored("8. Exit", "red"))
-        return input(colored("Select an option (1-8): ", "yellow"))
+        print(colored("\nREK Menu", "cyan", attrs=["bold"]))
+        print(colored("── Core ─────────────────────────────────────────", "cyan"))
+        print(colored(" 1. Run Recon Playbook", "green"))
+        print(colored(" 2. Subdomain Enumeration", "green"))
+        print(colored(" 3. HTTP Status Checking", "green"))
+        print(colored(" 4. Directory Scanning", "green"))
+        print(colored(" 5. REK Email Search", "green"))
+        print(colored(" 6. REK Wordlist Generator", "green"))
+        print(colored(" 7. REK LLM Assistant", "green"))
+        print(colored("── Advanced Recon ───────────────────────────────", "cyan"))
+        print(colored(" 8. Cloud Asset Discovery (S3/Azure/GCP)", "green"))
+        print(colored(" 9. Subdomain Takeover Detection", "green"))
+        print(colored("10. Parameter Discovery", "green"))
+        print(colored("11. Headers / CORS Audit", "green"))
+        print(colored("12. Favicon Fingerprinting", "green"))
+        print(colored("13. GitHub Dorking & Secret Scan", "green"))
+        print(colored("14. ASN / IP Range Expansion", "green"))
+        print(colored("── Operations ───────────────────────────────────", "cyan"))
+        print(colored("15. Continuous Monitoring", "green"))
+        print(colored("16. Notifications Setup", "green"))
+        print(colored("17. Scope Manager", "green"))
+        print(colored("18. Start REST API Server", "green"))
+        print(colored("─────────────────────────────────────────────────", "cyan"))
+        print(colored("19. Exit", "red"))
+        return input(colored("Select an option (1-19): ", "yellow"))
 
     def display_recon_menu(self, show_examples: bool = False):
         """Display the Recon Tool menu with colors."""
@@ -1389,12 +1473,31 @@ class ReconTool:
             return "llm"
         if args.email_domain or args.email_username or args.org:
             return "email"
-        if args.domain:
+        if args.domain and not getattr(args, 'cloud_recon', False) and not getattr(args, 'github_dork', False) and not getattr(args, 'asn_recon', False):
             return "subdomain"
         if args.input and args.output and not args.status and not args.url:
             return "http"
         if (args.input and args.status) or args.url:
             return "directory"
+        # Advanced tasks
+        if getattr(args, 'cloud_recon', False):
+            return "cloud_recon"
+        if getattr(args, 'takeover', False):
+            return "takeover"
+        if getattr(args, 'param_discovery', False):
+            return "param_discovery"
+        if getattr(args, 'headers_audit', False):
+            return "headers_audit"
+        if getattr(args, 'favicon_scan', False):
+            return "favicon_scan"
+        if getattr(args, 'github_dork', False):
+            return "github_dork"
+        if getattr(args, 'asn_recon', False):
+            return "asn_recon"
+        if getattr(args, 'monitor', False):
+            return "monitor"
+        if getattr(args, 'start_api', False):
+            return "start_api"
         return None
 
     def has_valid_args(self):
@@ -1694,6 +1797,172 @@ class ReconTool:
         else:
             print(colored("Invalid option. Please select 1-4.", "red"))
 
+    # ── Advanced feature handlers ──────────────────────────────────────────
+
+    def run_cloud_recon(self, domain: str = None, output: str = None):
+        """Run cloud asset discovery."""
+        if not _CLOUD_RECON_AVAILABLE:
+            print(colored("[!] rek_cloud_recon.py not found.", "red"))
+            return
+        if not domain:
+            domain = input(colored("[?] Target domain (e.g. example.com): ", "yellow")).strip()
+        if not domain:
+            return
+        output = output or f"results/cloud_{domain}.csv"
+        os.makedirs("results", exist_ok=True)
+        recon = CloudRecon(timeout=self.args.timeout, concurrency=self.args.concurrency, silent=self.silent)
+        findings = recon.run(domain, output)
+        if not self.silent:
+            print(colored(f"[✓] Cloud recon complete — {len(findings)} assets. Output: {output}", "green"))
+
+    def run_takeover_detection(self, input_file: str = None, output: str = None):
+        """Run subdomain takeover detection."""
+        if not _TAKEOVER_AVAILABLE:
+            print(colored("[!] rek_takeover.py not found.", "red"))
+            return
+        if not input_file:
+            input_file = input(colored("[?] Subdomains file (default: results.txt): ", "yellow")).strip() or "results.txt"
+        output = output or "results/takeover.csv"
+        os.makedirs("results", exist_ok=True)
+        detector = TakeoverDetector(timeout=self.args.timeout, concurrency=self.args.concurrency, silent=self.silent)
+        findings = detector.run(input_file=input_file, output_file=output)
+        vuln = [f for f in findings if f.get('status') == 'VULNERABLE']
+        if vuln and _NOTIFY_AVAILABLE:
+            mgr = NotificationManager(silent=True)
+            for v in vuln:
+                mgr.notify_takeover(v['subdomain'], v['cname'], v['service'])
+
+    def run_param_discovery(self, input_file: str = None, output: str = None):
+        """Run parameter discovery."""
+        if not _PARAM_DISCO_AVAILABLE:
+            print(colored("[!] rek_param_discovery.py not found.", "red"))
+            return
+        if not input_file:
+            input_file = input(colored("[?] URLs file (default: results/endpoints/spider-output.txt): ", "yellow")).strip() \
+                         or "results/endpoints/spider-output.txt"
+        output = output or "results/params_discovered.csv"
+        os.makedirs("results", exist_ok=True)
+        wordlist = input(colored("[?] Parameter wordlist (optional, press Enter to skip): ", "yellow")).strip() or None
+        disco = ParamDiscovery(timeout=self.args.timeout, concurrency=self.args.concurrency, silent=self.silent, wordlist_path=wordlist)
+        disco.run(input_file=input_file, output_file=output)
+
+    def run_headers_audit(self, input_file: str = None, output: str = None):
+        """Run CORS/security headers audit."""
+        if not _HEADERS_AUDIT_AVAILABLE:
+            print(colored("[!] rek_headers_audit.py not found.", "red"))
+            return
+        if not input_file:
+            input_file = input(colored("[?] Live hosts file (default: results/subdomains/subs-alive.txt): ", "yellow")).strip() \
+                         or "results/subdomains/subs-alive.txt"
+        output = output or "results/headers_audit.csv"
+        os.makedirs("results", exist_ok=True)
+        import re as _re
+        import sys as _sys
+        _sys.modules.setdefault('re', _re)
+        auditor = HeadersAuditor(timeout=self.args.timeout, concurrency=self.args.concurrency, silent=self.silent)
+        auditor.run(input_file=input_file, output_file=output)
+
+    def run_favicon_scan(self, input_file: str = None, output: str = None):
+        """Run favicon hash fingerprinting."""
+        if not _FAVICON_AVAILABLE:
+            print(colored("[!] rek_favicon.py not found.", "red"))
+            return
+        if not input_file:
+            input_file = input(colored("[?] Live hosts file (default: results/subdomains/subs-alive.txt): ", "yellow")).strip() \
+                         or "results/subdomains/subs-alive.txt"
+        output = output or "results/favicon_hashes.csv"
+        os.makedirs("results", exist_ok=True)
+        scanner = FaviconScanner(timeout=self.args.timeout, concurrency=self.args.concurrency, silent=self.silent)
+        scanner.run(input_file=input_file, output_file=output)
+
+    def run_github_dork(self, domain: str = None, output: str = None):
+        """Run GitHub dorking and secret scan."""
+        if not _GITHUB_DORK_AVAILABLE:
+            print(colored("[!] rek_github_dorking.py not found.", "red"))
+            return
+        if not domain:
+            domain = input(colored("[?] Target domain (e.g. example.com): ", "yellow")).strip()
+        if not domain:
+            return
+        token = getattr(self.args, 'token', None) or input(colored("[?] GitHub token (optional, press Enter to skip): ", "yellow")).strip() or None
+        output = output or f"results/github_dorks_{domain}.csv"
+        os.makedirs("results", exist_ok=True)
+        dorker = GitHubDorker(token=token, timeout=self.args.timeout, silent=self.silent)
+        dorker.run(domain, output)
+
+    def run_asn_recon(self, domain: str = None, output: str = None):
+        """Run ASN/IP range expansion."""
+        if not _ASN_AVAILABLE:
+            print(colored("[!] rek_asn.py not found.", "red"))
+            return
+        if not domain:
+            domain = input(colored("[?] Target domain (e.g. example.com): ", "yellow")).strip()
+        if not domain:
+            return
+        output = output or f"results/asn_{domain}.csv"
+        os.makedirs("results", exist_ok=True)
+        recon = ASNRecon(timeout=self.args.timeout, silent=self.silent)
+        recon.run(domain, output)
+
+    def run_monitor(self):
+        """Start continuous monitoring."""
+        if not _MONITOR_AVAILABLE:
+            print(colored("[!] rek_monitor.py not found.", "red"))
+            return
+        domains_input = input(colored("[?] Domains to monitor (comma-separated): ", "yellow")).strip()
+        if not domains_input:
+            return
+        domains = [d.strip() for d in domains_input.split(',') if d.strip()]
+        interval = input(colored("[?] Check interval in minutes (default: 60): ", "yellow")).strip() or "60"
+        try:
+            interval = int(interval)
+        except ValueError:
+            interval = 60
+        slack = input(colored("[?] Slack webhook URL (optional): ", "yellow")).strip() or None
+        discord = input(colored("[?] Discord webhook URL (optional): ", "yellow")).strip() or None
+        monitor = ContinuousMonitor(
+            interval_minutes=interval,
+            slack_webhook=slack,
+            discord_webhook=discord,
+            silent=self.silent,
+        )
+        daemon_choice = input(colored("[?] Run as daemon in background? (y/n): ", "yellow")).strip().lower()
+        monitor.start(domains, daemon=(daemon_choice == 'y'))
+
+    def run_notifications_setup(self):
+        """Configure notification webhooks."""
+        if not _NOTIFY_AVAILABLE:
+            print(colored("[!] rek_notify.py not found.", "red"))
+            return
+        mgr = NotificationManager(silent=self.silent)
+        mgr.configure_interactive()
+
+    def run_scope_manager(self):
+        """Interactive scope manager."""
+        if not _SCOPE_AVAILABLE:
+            print(colored("[!] rek_scope.py not found.", "red"))
+            return
+        scope_file = input(colored("[?] Load existing scope file? (path or Enter to skip): ", "yellow")).strip() or None
+        oos_file = input(colored("[?] Load out-of-scope file? (path or Enter to skip): ", "yellow")).strip() or None
+        mgr = ScopeManager(scope_file=scope_file, out_of_scope_file=oos_file, silent=self.silent)
+        mgr.interactive_setup()
+        self.scope_manager = mgr
+
+    def run_api_server(self):
+        """Start the REK REST API server."""
+        try:
+            from rek_api import start_api_server
+            host = input(colored("[?] Host (default: 0.0.0.0): ", "yellow")).strip() or "0.0.0.0"
+            port_str = input(colored("[?] Port (default: 8080): ", "yellow")).strip() or "8080"
+            try:
+                port = int(port_str)
+            except ValueError:
+                port = 8080
+            start_api_server(host=host, port=port)
+        except ImportError:
+            print(colored("[!] rek_api.py not found or FastAPI/uvicorn not installed.", "red"))
+            print(colored("    Install: pip install fastapi uvicorn", "yellow"))
+
     def run(self):
         """Run the recon tool based on arguments or interactively."""
         self.display_banner()
@@ -1710,6 +1979,57 @@ class ReconTool:
                 self.run_email_search()
             elif task == "llm":
                 self.run_llm_assistant(self.args)
+            elif task == "cloud_recon":
+                self.run_cloud_recon(
+                    domain=getattr(self.args, 'domain', None),
+                    output=getattr(self.args, 'output', None),
+                )
+            elif task == "takeover":
+                self.run_takeover_detection(
+                    input_file=getattr(self.args, 'input', None),
+                    output=getattr(self.args, 'output', None),
+                )
+            elif task == "param_discovery":
+                self.run_param_discovery(
+                    input_file=getattr(self.args, 'input', None),
+                    output=getattr(self.args, 'output', None),
+                )
+            elif task == "headers_audit":
+                self.run_headers_audit(
+                    input_file=getattr(self.args, 'input', None),
+                    output=getattr(self.args, 'output', None),
+                )
+            elif task == "favicon_scan":
+                self.run_favicon_scan(
+                    input_file=getattr(self.args, 'input', None),
+                    output=getattr(self.args, 'output', None),
+                )
+            elif task == "github_dork":
+                self.run_github_dork(
+                    domain=getattr(self.args, 'domain', None),
+                    output=getattr(self.args, 'output', None),
+                )
+            elif task == "asn_recon":
+                self.run_asn_recon(
+                    domain=getattr(self.args, 'domain', None),
+                    output=getattr(self.args, 'output', None),
+                )
+            elif task == "monitor":
+                domains = [self.args.domain] if getattr(self.args, 'domain', None) else []
+                if not domains:
+                    print(colored("[!] Provide -d domain for monitoring", "red"))
+                    return
+                monitor = ContinuousMonitor(
+                    interval_minutes=getattr(self.args, 'monitor_interval', 60),
+                    slack_webhook=getattr(self.args, 'slack_webhook', None),
+                    discord_webhook=getattr(self.args, 'discord_webhook', None),
+                    silent=self.silent,
+                ) if _MONITOR_AVAILABLE else None
+                if monitor:
+                    monitor.start(domains)
+            elif task == "start_api":
+                from rek_api import start_api_server
+                start_api_server(host='0.0.0.0', port=getattr(self.args, 'api_port', 8080))
             return
 
         while True:
@@ -1743,10 +2063,32 @@ class ReconTool:
             elif choice == '7':
                 self.run_llm_assistant()
             elif choice == '8':
+                self.run_cloud_recon()
+            elif choice == '9':
+                self.run_takeover_detection()
+            elif choice == '10':
+                self.run_param_discovery()
+            elif choice == '11':
+                self.run_headers_audit()
+            elif choice == '12':
+                self.run_favicon_scan()
+            elif choice == '13':
+                self.run_github_dork()
+            elif choice == '14':
+                self.run_asn_recon()
+            elif choice == '15':
+                self.run_monitor()
+            elif choice == '16':
+                self.run_notifications_setup()
+            elif choice == '17':
+                self.run_scope_manager()
+            elif choice == '18':
+                self.run_api_server()
+            elif choice == '19':
                 print(colored("Exiting REK. Stay ethical!", "cyan"))
                 break
             else:
-                print(colored("Invalid option. Please select 1-8.", "red"))
+                print(colored("Invalid option. Please select 1-19.", "red"))
 
 def print_help():
     """Print detailed help information for REK tool."""
@@ -1871,6 +2213,22 @@ if __name__ == "__main__":
     parser.add_argument('--llm-local-url', help="Local LLM base URL (Ollama-compatible)")
     parser.add_argument('--llm-remote-url', help="Remote LLM API base URL (OpenAI-compatible)")
     parser.add_argument('--llm-api-key', help="Remote LLM API key")
+    # Advanced feature flags
+    parser.add_argument('--cloud-recon', action='store_true', help="Run cloud asset discovery (S3/Azure/GCP)")
+    parser.add_argument('--takeover', action='store_true', help="Run subdomain takeover detection")
+    parser.add_argument('--param-discovery', action='store_true', help="Run parameter discovery")
+    parser.add_argument('--headers-audit', action='store_true', help="Run CORS/security headers audit")
+    parser.add_argument('--favicon-scan', action='store_true', help="Run favicon fingerprinting")
+    parser.add_argument('--github-dork', action='store_true', help="Run GitHub dorking and secret scan")
+    parser.add_argument('--asn-recon', action='store_true', help="Run ASN/IP range expansion")
+    parser.add_argument('--monitor', action='store_true', help="Start continuous monitoring daemon")
+    parser.add_argument('--monitor-interval', type=int, default=60, help="Monitoring interval in minutes (default: 60)")
+    parser.add_argument('--slack-webhook', help="Slack webhook URL for notifications")
+    parser.add_argument('--discord-webhook', help="Discord webhook URL for notifications")
+    parser.add_argument('--scope-file', help="In-scope targets file for scope management")
+    parser.add_argument('--oos-file', help="Out-of-scope targets file")
+    parser.add_argument('--start-api', action='store_true', help="Start REK REST API server")
+    parser.add_argument('--api-port', type=int, default=8080, help="REST API port (default: 8080)")
 
     args = parser.parse_args()
 

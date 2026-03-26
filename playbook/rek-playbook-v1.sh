@@ -127,6 +127,11 @@ install_tools() {
                     puredns) go install -v github.com/d3mondev/puredns/v2@latest ;;
                     gf) go install -v github.com/tomnomnom/gf@latest ;;
                     ripgen) go install -v github.com/resyncgg/ripgen@latest ;;
+                    nuclei) go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest ;;
+                    subzy) go install -v github.com/PentestPad/subzy@latest ;;
+                    waybackurls) go install -v github.com/tomnomnom/waybackurls@latest ;;
+                    asnmap) go install -v github.com/projectdiscovery/asnmap/cmd/asnmap@latest ;;
+                    arjun) pip3 install arjun 2>/dev/null || true ;;
                 esac
             fi
         done
@@ -195,6 +200,11 @@ check_prerequisites() {
         "puredns"
         "gf"
         "ripgen"
+        "nuclei"
+        "subzy"
+        "waybackurls"
+        "asnmap"
+        "arjun"
     )
     
     for tool in "${tools[@]}"; do
@@ -289,6 +299,30 @@ refresh_resolvers() {
     else
         echo -e "${RED}[!] Failed to refresh resolvers${NC}"
     fi
+}
+
+# Phase 0: Cloud Asset Discovery
+cloud_asset_discovery() {
+    echo -e "\n${BLUE}[+] Phase 0: Cloud Asset Discovery (S3/Azure/GCP)${NC}"
+    mkdir -p "$RESULTS_DIR/cloud"
+    cd "$RESULTS_DIR/cloud"
+
+    echo -e "${YELLOW}[*] Running cloud bucket enumeration via Python module...${NC}"
+    python3 -c "
+import sys, os
+sys.path.insert(0, '$WORKING_DIR')
+try:
+    from rek_cloud_recon import CloudRecon
+    recon = CloudRecon(timeout=10, concurrency=50, silent=False)
+    recon.run('$TARGET_DOMAIN', 'cloud_assets.csv')
+except ImportError:
+    print('[!] rek_cloud_recon.py not available, skipping cloud recon')
+except Exception as e:
+    print(f'[!] Cloud recon error: {e}')
+" 2>&1 || echo -e "${YELLOW}[!] Cloud recon skipped${NC}"
+
+    echo -e "${GREEN}[✓] Cloud asset discovery completed${NC}"
+    cd "$RESULTS_DIR"
 }
 
 # Step 1: Subdomain Enumeration
@@ -390,6 +424,37 @@ subdomain_permutation() {
     echo -e "${GREEN}[✓] Subdomain permutation completed. Found $total_subdomains total unique subdomains${NC}"
 }
 
+# Phase 2.5: ASN / IP Range Expansion
+asn_expansion() {
+    echo -e "\n${BLUE}[+] Phase 2.5: ASN / IP Range Expansion${NC}"
+    cd "$RESULTS_DIR/subdomains"
+
+    if command_exists asnmap; then
+        echo -e "${YELLOW}[*] Running asnmap for ASN enumeration...${NC}"
+        asnmap -d "$TARGET_DOMAIN" -silent -o asnmap_cidrs.txt 2>/dev/null || echo -e "${RED}[!] asnmap failed${NC}"
+        if [ -s asnmap_cidrs.txt ]; then
+            echo -e "${GREEN}[✓] ASN CIDRs saved: $(wc -l < asnmap_cidrs.txt) ranges${NC}"
+        fi
+    else
+        echo -e "${YELLOW}[*] asnmap not found, using Python ASN module...${NC}"
+        python3 -c "
+import sys
+sys.path.insert(0, '$WORKING_DIR')
+try:
+    from rek_asn import ASNRecon
+    recon = ASNRecon(timeout=15, silent=False)
+    results = recon.run('$TARGET_DOMAIN', 'asn_$TARGET_DOMAIN.csv')
+except ImportError:
+    print('[!] rek_asn.py not available')
+except Exception as e:
+    print(f'[!] ASN recon error: {e}')
+" 2>&1 || true
+    fi
+
+    echo -e "${GREEN}[✓] ASN expansion completed${NC}"
+    cd "$RESULTS_DIR"
+}
+
 # Step 3: Identify Live Subdomains and Fingerprint Applications
 identify_live_subdomains() {
     echo -e "\n${BLUE}[+] Step 3: Identifying Live Subdomains${NC}"
@@ -403,6 +468,78 @@ identify_live_subdomains() {
     
     total_live=$(wc -l < subs-alive.txt)
     echo -e "${GREEN}[✓] Live subdomain identification completed. Found $total_live live subdomains${NC}"
+}
+
+# Phase 3.5: Subdomain Takeover Detection
+takeover_detection() {
+    echo -e "\n${BLUE}[+] Phase 3.5: Subdomain Takeover Detection${NC}"
+    cd "$RESULTS_DIR/subdomains"
+
+    if command_exists subzy; then
+        echo -e "${YELLOW}[*] Running subzy for takeover detection...${NC}"
+        subzy run --targets subs-alive.txt --output "$RESULTS_DIR/vulnerabilities/takeover-subzy.json" 2>/dev/null \
+            || echo -e "${RED}[!] subzy failed${NC}"
+    fi
+
+    echo -e "${YELLOW}[*] Running Python takeover checker...${NC}"
+    python3 -c "
+import sys
+sys.path.insert(0, '$WORKING_DIR')
+try:
+    from rek_takeover import TakeoverDetector
+    detector = TakeoverDetector(timeout=10, concurrency=50, silent=False)
+    detector.run(input_file='subs-alive.txt', output_file='$RESULTS_DIR/vulnerabilities/takeover.csv')
+except ImportError:
+    print('[!] rek_takeover.py not available')
+except Exception as e:
+    print(f'[!] Takeover detection error: {e}')
+" 2>&1 || true
+
+    echo -e "${GREEN}[✓] Takeover detection completed${NC}"
+    cd "$RESULTS_DIR"
+}
+
+# Phase 3.6: Favicon Fingerprinting
+favicon_fingerprinting() {
+    echo -e "\n${BLUE}[+] Phase 3.6: Favicon Fingerprinting${NC}"
+    cd "$RESULTS_DIR"
+
+    python3 -c "
+import sys
+sys.path.insert(0, '$WORKING_DIR')
+try:
+    from rek_favicon import FaviconScanner
+    scanner = FaviconScanner(timeout=10, concurrency=30, silent=False)
+    scanner.run(input_file='subdomains/subs-alive.txt', output_file='vulnerabilities/favicon_hashes.csv')
+except ImportError:
+    print('[!] rek_favicon.py not available')
+except Exception as e:
+    print(f'[!] Favicon scan error: {e}')
+" 2>&1 || true
+
+    echo -e "${GREEN}[✓] Favicon fingerprinting completed${NC}"
+}
+
+# Phase 3.7: CORS / Security Headers Audit
+headers_audit() {
+    echo -e "\n${BLUE}[+] Phase 3.7: CORS / Security Headers Audit${NC}"
+    cd "$RESULTS_DIR"
+
+    python3 -c "
+import sys, re
+sys.path.insert(0, '$WORKING_DIR')
+sys.modules.setdefault('re', re)
+try:
+    from rek_headers_audit import HeadersAuditor
+    auditor = HeadersAuditor(timeout=10, concurrency=30, silent=False)
+    auditor.run(input_file='subdomains/subs-alive.txt', output_file='vulnerabilities/headers_audit.csv')
+except ImportError:
+    print('[!] rek_headers_audit.py not available')
+except Exception as e:
+    print(f'[!] Headers audit error: {e}')
+" 2>&1 || true
+
+    echo -e "${GREEN}[✓] Headers audit completed${NC}"
 }
 
 # Step 4: Port Scanning
@@ -425,6 +562,28 @@ port_scanning() {
     httpx -l subs-portscanned.txt -title -sc -td -server -fr -o httpx-naabu.txt || echo -e "${RED}[!] httpx failed${NC}"
     
     echo -e "${GREEN}[✓] Port scanning completed${NC}"
+}
+
+# Phase 4.5: Wayback Machine / Passive URL Mining
+wayback_mining() {
+    echo -e "\n${BLUE}[+] Phase 4.5: Wayback Machine / Passive URL Mining${NC}"
+    cd "$RESULTS_DIR/endpoints"
+
+    if command_exists waybackurls; then
+        echo -e "${YELLOW}[*] Running waybackurls...${NC}"
+        cat "$RESULTS_DIR/subdomains/subs-alive.txt" | waybackurls 2>/dev/null | sort -u > wayback-output.txt \
+            || echo -e "${RED}[!] waybackurls failed${NC}"
+        total_wayback=$(wc -l < wayback-output.txt 2>/dev/null || echo 0)
+        echo -e "${GREEN}[✓] waybackurls found $total_wayback URLs${NC}"
+    else
+        echo -e "${YELLOW}[!] waybackurls not found, using gau fallback...${NC}"
+        cat "$RESULTS_DIR/subdomains/subs-alive.txt" | gau --threads 20 \
+            --blacklist jpg,jpeg,png,gif,svg,css,ttf,woff,woff2,ico 2>/dev/null \
+            | sort -u > wayback-output.txt || true
+    fi
+
+    echo -e "${GREEN}[✓] Wayback mining completed${NC}"
+    cd "$RESULTS_DIR"
 }
 
 # Step 5: Content Discovery (Spidering)
@@ -481,6 +640,108 @@ categorize_endpoints() {
     grep -i -e '\.pdf$' spider-output.txt | tee pdf-endpd
     
     echo -e "${GREEN}[✓] Endpoint categorization completed${NC}"
+}
+
+# Phase 7.5: Parameter Discovery
+parameter_discovery() {
+    echo -e "\n${BLUE}[+] Phase 7.5: Parameter Discovery${NC}"
+    cd "$RESULTS_DIR"
+
+    # Use arjun if available
+    if command_exists arjun && [ -f "endpoints/spider-output.txt" ]; then
+        echo -e "${YELLOW}[*] Running arjun parameter discovery (sample of 50 endpoints)...${NC}"
+        # Sample first 50 live endpoints to avoid excessive runtime
+        head -50 endpoints/spider-output.txt > /tmp/arjun_targets.txt 2>/dev/null || true
+        arjun -i /tmp/arjun_targets.txt -oT endpoints/arjun-params.txt -q 2>/dev/null \
+            || echo -e "${RED}[!] arjun failed${NC}"
+        rm -f /tmp/arjun_targets.txt
+    fi
+
+    echo -e "${YELLOW}[*] Running Python param discovery...${NC}"
+    python3 -c "
+import sys
+sys.path.insert(0, '$WORKING_DIR')
+try:
+    from rek_param_discovery import ParamDiscovery
+    disco = ParamDiscovery(timeout=10, concurrency=15, silent=False)
+    disco.run(input_file='endpoints/spider-output.txt', output_file='endpoints/params_discovered.csv')
+except ImportError:
+    print('[!] rek_param_discovery.py not available')
+except Exception as e:
+    print(f'[!] Param discovery error: {e}')
+" 2>&1 || true
+
+    echo -e "${GREEN}[✓] Parameter discovery completed${NC}"
+}
+
+# Phase 7.6: Nuclei Vulnerability Scanning
+nuclei_scan() {
+    echo -e "\n${BLUE}[+] Phase 7.6: Nuclei Vulnerability Scanning${NC}"
+    cd "$RESULTS_DIR"
+
+    if ! command_exists nuclei; then
+        echo -e "${RED}[!] nuclei not found, skipping...${NC}"
+        return
+    fi
+
+    mkdir -p vulnerabilities
+
+    echo -e "${YELLOW}[*] Updating Nuclei templates...${NC}"
+    nuclei -update-templates -silent 2>/dev/null || true
+
+    echo -e "${YELLOW}[*] Running Nuclei on live hosts (critical/high/medium severity)...${NC}"
+    nuclei -l subdomains/subs-alive.txt \
+        -severity critical,high,medium \
+        -o vulnerabilities/nuclei-findings.txt \
+        -stats \
+        -c 25 \
+        -rate-limit 50 \
+        -timeout 5 \
+        -silent 2>/dev/null || echo -e "${RED}[!] Nuclei scan failed${NC}"
+
+    # Also run technology-specific templates based on httpx fingerprinting
+    if [ -f "subdomains/httpx-output.txt" ]; then
+        echo -e "${YELLOW}[*] Running Nuclei exposure/takeover templates...${NC}"
+        nuclei -l subdomains/subs-alive.txt \
+            -tags exposure,takeover,misconfig \
+            -o vulnerabilities/nuclei-exposure.txt \
+            -c 25 \
+            -rate-limit 30 \
+            -timeout 5 \
+            -silent 2>/dev/null || true
+    fi
+
+    if [ -f "vulnerabilities/nuclei-findings.txt" ]; then
+        nuclei_count=$(wc -l < vulnerabilities/nuclei-findings.txt)
+        echo -e "${GREEN}[✓] Nuclei found $nuclei_count potential issues${NC}"
+    fi
+    echo -e "${GREEN}[✓] Nuclei scan completed${NC}"
+}
+
+# Phase 7.7: GitHub Dorking
+github_dorking() {
+    echo -e "\n${BLUE}[+] Phase 7.7: GitHub Dorking & Secret Scan${NC}"
+    cd "$RESULTS_DIR"
+
+    if [ -z "$GITHUB_API_TOKEN" ]; then
+        echo -e "${YELLOW}[!] GitHub API token not provided, skipping GitHub dorking...${NC}"
+        return
+    fi
+
+    python3 -c "
+import sys
+sys.path.insert(0, '$WORKING_DIR')
+try:
+    from rek_github_dorking import GitHubDorker
+    dorker = GitHubDorker(token='$GITHUB_API_TOKEN', timeout=15, silent=False)
+    dorker.run('$TARGET_DOMAIN', 'vulnerabilities/github_dorks.csv')
+except ImportError:
+    print('[!] rek_github_dorking.py not available')
+except Exception as e:
+    print(f'[!] GitHub dorking error: {e}')
+" 2>&1 || true
+
+    echo -e "${GREEN}[✓] GitHub dorking completed${NC}"
 }
 
 # Step 8: JavaScript Analysis for Secrets
@@ -580,13 +841,55 @@ generate_report() {
         fi
     done
     
+    # Nuclei findings
+    if [ -f "$RESULTS_DIR/vulnerabilities/nuclei-findings.txt" ]; then
+        nuclei_count=$(wc -l < "$RESULTS_DIR/vulnerabilities/nuclei-findings.txt")
+        echo "- Nuclei findings: $nuclei_count" >> "$REPORT_FILE"
+    fi
+
+    # Takeover findings
+    if [ -f "$RESULTS_DIR/vulnerabilities/takeover.csv" ]; then
+        takeover_count=$(tail -n +2 "$RESULTS_DIR/vulnerabilities/takeover.csv" | wc -l)
+        echo "- Potential takeovers: $takeover_count" >> "$REPORT_FILE"
+    fi
+
+    # Cloud assets
+    if [ -f "$RESULTS_DIR/cloud/cloud_assets.csv" ]; then
+        cloud_count=$(tail -n +2 "$RESULTS_DIR/cloud/cloud_assets.csv" | wc -l)
+        echo "- Cloud assets discovered: $cloud_count" >> "$REPORT_FILE"
+    fi
+
+    # Parameter discovery
+    if [ -f "$RESULTS_DIR/endpoints/params_discovered.csv" ]; then
+        params_count=$(tail -n +2 "$RESULTS_DIR/endpoints/params_discovered.csv" | wc -l)
+        echo "- Endpoints with discovered parameters: $params_count" >> "$REPORT_FILE"
+    fi
+
+    # Headers audit high/medium
+    if [ -f "$RESULTS_DIR/vulnerabilities/headers_audit.csv" ]; then
+        headers_high=$(grep -c ",High," "$RESULTS_DIR/vulnerabilities/headers_audit.csv" 2>/dev/null || echo 0)
+        echo "- Headers/CORS high-severity issues: $headers_high" >> "$REPORT_FILE"
+    fi
+
+    # GitHub dorking secrets
+    if [ -f "$RESULTS_DIR/vulnerabilities/github_dorks.csv" ]; then
+        dork_count=$(tail -n +2 "$RESULTS_DIR/vulnerabilities/github_dorks.csv" | wc -l)
+        echo "- GitHub dork matches (potential secrets): $dork_count" >> "$REPORT_FILE"
+    fi
+
     echo "" >> "$REPORT_FILE"
     echo "## Next Steps" >> "$REPORT_FILE"
     echo "- Manual verification of potential vulnerabilities" >> "$REPORT_FILE"
+    echo "- Review Nuclei findings in vulnerabilities/nuclei-findings.txt" >> "$REPORT_FILE"
+    echo "- Confirm subdomain takeover candidates in vulnerabilities/takeover.csv" >> "$REPORT_FILE"
+    echo "- Test endpoints with discovered parameters (endpoints/params_discovered.csv)" >> "$REPORT_FILE"
+    echo "- Review CORS/headers issues in vulnerabilities/headers_audit.csv" >> "$REPORT_FILE"
+    echo "- Investigate GitHub dork matches in vulnerabilities/github_dorks.csv" >> "$REPORT_FILE"
+    echo "- Check favicon hash Shodan queries for related infrastructure" >> "$REPORT_FILE"
     echo "- Deeper analysis of JavaScript files for secrets" >> "$REPORT_FILE"
     echo "- Testing discovered endpoints for business logic flaws" >> "$REPORT_FILE"
-    echo "- Exploring technologies detected by fingerprinting" >> "$REPORT_FILE"
-    
+    echo "- Explore ASN IP ranges for additional attack surface" >> "$REPORT_FILE"
+
     echo -e "${GREEN}[✓] Report generated: $REPORT_FILE${NC}"
 }
 
@@ -623,6 +926,14 @@ display_help() {
     echo -e "  --skip-spider              Skip content discovery"
     echo -e "  --skip-vulnanalysis        Skip vulnerability analysis"
     echo -e "  --skip-jsanalysis          Skip JavaScript analysis"
+    echo -e "  --skip-cloudrecon          Skip cloud asset discovery"
+    echo -e "  --skip-takeover            Skip subdomain takeover detection"
+    echo -e "  --skip-params              Skip parameter discovery"
+    echo -e "  --skip-headers             Skip CORS/headers audit"
+    echo -e "  --skip-nuclei              Skip Nuclei scanning"
+    echo -e "  --skip-asn                 Skip ASN expansion"
+    echo -e "  --skip-wayback             Skip Wayback URL mining"
+    echo -e "  --skip-githubdork          Skip GitHub dorking"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
     echo -e "  ./rek-playbook-v1.sh -d example.com"
@@ -640,6 +951,14 @@ parse_arguments() {
     SKIP_SPIDER=false
     SKIP_VULNANALYSIS=false
     SKIP_JSANALYSIS=false
+    SKIP_CLOUDRECON=false
+    SKIP_TAKEOVER=false
+    SKIP_PARAMS=false
+    SKIP_HEADERS=false
+    SKIP_NUCLEI=false
+    SKIP_ASN=false
+    SKIP_WAYBACK=false
+    SKIP_GITHUBDORK=false
     
     while [[ $# -gt 0 ]]; do
         key="$1"
@@ -713,6 +1032,38 @@ parse_arguments() {
                 ;;
             --skip-jsanalysis)
                 SKIP_JSANALYSIS=true
+                shift
+                ;;
+            --skip-cloudrecon)
+                SKIP_CLOUDRECON=true
+                shift
+                ;;
+            --skip-takeover)
+                SKIP_TAKEOVER=true
+                shift
+                ;;
+            --skip-params)
+                SKIP_PARAMS=true
+                shift
+                ;;
+            --skip-headers)
+                SKIP_HEADERS=true
+                shift
+                ;;
+            --skip-nuclei)
+                SKIP_NUCLEI=true
+                shift
+                ;;
+            --skip-asn)
+                SKIP_ASN=true
+                shift
+                ;;
+            --skip-wayback)
+                SKIP_WAYBACK=true
+                shift
+                ;;
+            --skip-githubdork)
+                SKIP_GITHUBDORK=true
                 shift
                 ;;
             *)
@@ -834,44 +1185,103 @@ main() {
     save_pipeline
     
     start_time=$(date +%s)
-    
+
+    # Phase 0: Cloud Asset Discovery
+    if [ "$SKIP_CLOUDRECON" = false ]; then
+        cloud_asset_discovery
+    else
+        echo -e "${YELLOW}[!] Skipping cloud asset discovery${NC}"
+    fi
+
     if [ "$SKIP_SUBDOMAIN" = false ]; then
         subdomain_enumeration
     else
         echo -e "${YELLOW}[!] Skipping subdomain enumeration${NC}"
     fi
-    
+
     if [ "$SKIP_PERMUTATION" = false ]; then
         subdomain_permutation
     else
         echo -e "${YELLOW}[!] Skipping subdomain permutation${NC}"
     fi
-    
+
+    # Phase 2.5: ASN Expansion
+    if [ "$SKIP_ASN" = false ]; then
+        asn_expansion
+    else
+        echo -e "${YELLOW}[!] Skipping ASN expansion${NC}"
+    fi
+
     if [ "$SKIP_FINGERPRINT" = false ]; then
         identify_live_subdomains
     else
         echo -e "${YELLOW}[!] Skipping subdomain fingerprinting${NC}"
     fi
-    
+
+    # Phase 3.5: Takeover Detection (after live detection)
+    if [ "$SKIP_TAKEOVER" = false ]; then
+        takeover_detection
+    else
+        echo -e "${YELLOW}[!] Skipping takeover detection${NC}"
+    fi
+
+    # Phase 3.6: Favicon Fingerprinting
+    favicon_fingerprinting
+
+    # Phase 3.7: Headers / CORS Audit
+    if [ "$SKIP_HEADERS" = false ]; then
+        headers_audit
+    else
+        echo -e "${YELLOW}[!] Skipping headers audit${NC}"
+    fi
+
     if [ "$SKIP_PORTSCAN" = false ]; then
         port_scanning
     else
         echo -e "${YELLOW}[!] Skipping port scanning${NC}"
     fi
-    
+
+    # Phase 4.5: Wayback URL Mining
+    if [ "$SKIP_WAYBACK" = false ]; then
+        wayback_mining
+    else
+        echo -e "${YELLOW}[!] Skipping wayback URL mining${NC}"
+    fi
+
     if [ "$SKIP_SPIDER" = false ]; then
         content_discovery
     else
         echo -e "${YELLOW}[!] Skipping content discovery${NC}"
     fi
-    
+
     if [ "$SKIP_VULNANALYSIS" = false ]; then
         analyze_vulnerabilities
         categorize_endpoints
     else
         echo -e "${YELLOW}[!] Skipping vulnerability analysis${NC}"
     fi
-    
+
+    # Phase 7.5: Parameter Discovery
+    if [ "$SKIP_PARAMS" = false ]; then
+        parameter_discovery
+    else
+        echo -e "${YELLOW}[!] Skipping parameter discovery${NC}"
+    fi
+
+    # Phase 7.6: Nuclei Scanning
+    if [ "$SKIP_NUCLEI" = false ]; then
+        nuclei_scan
+    else
+        echo -e "${YELLOW}[!] Skipping Nuclei scan${NC}"
+    fi
+
+    # Phase 7.7: GitHub Dorking
+    if [ "$SKIP_GITHUBDORK" = false ]; then
+        github_dorking
+    else
+        echo -e "${YELLOW}[!] Skipping GitHub dorking${NC}"
+    fi
+
     if [ "$SKIP_JSANALYSIS" = false ]; then
         js_analysis
     else

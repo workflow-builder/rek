@@ -240,6 +240,7 @@ def _run_job(job_id: str) -> None:
                 cwd=str(ROOT_DIR),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,
                 text=True,
                 bufsize=1,
                 env=_build_env(extra_env),
@@ -632,1087 +633,1373 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>REK Dashboard</title>
+<title>REK — Recon Toolkit</title>
 <style>
-/* ===== CSS Reset & Variables ===== */
-:root {
-  --bg-primary: #0a0e1a;
-  --bg-secondary: #0f1629;
-  --bg-card: #131b30;
-  --bg-card-hover: #172040;
-  --bg-input: #0c1124;
-  --bg-terminal: #020510;
-  --border: #1e2d4a;
-  --border-light: #2a3d62;
-  --border-accent: #1a3a6a;
-  --text: #e2e8f0;
-  --text-secondary: #b8c5d9;
-  --text-muted: #6b7fa0;
-  --accent: #0ea5e9;
-  --accent-hover: #38bdf8;
-  --accent-dim: #0c4a6e;
-  --success: #22c55e;
-  --success-dim: #14532d;
-  --warning: #f59e0b;
-  --warning-dim: #78350f;
-  --error: #ef4444;
-  --error-dim: #7f1d1d;
-  --info: #3b82f6;
-  --info-dim: #1e3a5f;
-  --purple: #a78bfa;
-  --purple-dim: #3b1d8e;
-  --cyan: #06b6d4;
-  --orange: #f97316;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.4);
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e1a;--bg2:#0f1629;--card:#131b30;--card2:#172040;
+  --border:#1e2d4a;--border2:#2a3d62;
+  --text:#e2e8f0;--text2:#8892a4;--text3:#4a5568;
+  --cyan:#00d4ff;--green:#00ff88;--red:#ff4444;--orange:#ff8c00;--yellow:#ffd700;--purple:#a855f7;
+  --terminal:#060c18;
+  --font:'JetBrains Mono',monospace;
 }
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text); min-height: 100vh; line-height: 1.5; }
-a { color: var(--accent); text-decoration: none; transition: color 0.15s; }
-a:hover { color: var(--accent-hover); }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;line-height:1.5;overflow:hidden}
 
-/* ===== App Shell ===== */
-.app-header {
-  background: linear-gradient(135deg, #0c1020 0%, #162240 100%);
-  border-bottom: 1px solid var(--border);
-  padding: 0 1.5rem;
-  height: 52px;
-  display: flex; align-items: center; justify-content: space-between;
-  position: sticky; top: 0; z-index: 100;
-  backdrop-filter: blur(12px);
-}
-.app-header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.08em; }
-.app-header h1 .rek { color: var(--accent); font-family: var(--font-mono); }
-.header-right { display: flex; align-items: center; gap: 1rem; }
-.header-badge { background: var(--accent-dim); color: var(--accent); font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: 600; letter-spacing: 0.03em; }
-.header-meta { color: var(--text-muted); font-size: 0.78rem; }
+/* ── Header ── */
+#header{display:flex;align-items:center;gap:16px;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);height:48px;flex-shrink:0}
+#header .logo{font-size:20px;font-weight:700;letter-spacing:.1em;color:var(--cyan);white-space:nowrap}
+#header .logo span{color:var(--green)}
+#tabs{display:flex;gap:2px;flex:1;margin:0 16px}
+.tab-btn{padding:6px 14px;border:1px solid transparent;border-radius:4px;cursor:pointer;background:transparent;color:var(--text2);font:inherit;font-size:12px;font-weight:500;letter-spacing:.05em;transition:.15s}
+.tab-btn:hover{color:var(--text);border-color:var(--border2)}
+.tab-btn.active{background:var(--card);color:var(--cyan);border-color:var(--border2)}
+#hdr-status{font-size:11px;color:var(--text2);white-space:nowrap}
 
-.main-nav {
-  display: flex; gap: 0; border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary); overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.main-nav button {
-  background: none; border: none; color: var(--text-muted);
-  padding: 0.7rem 1.25rem; font-size: 0.84rem; cursor: pointer;
-  border-bottom: 2px solid transparent; white-space: nowrap;
-  transition: all 0.15s; font-weight: 500;
-}
-.main-nav button:hover { color: var(--text-secondary); background: rgba(255,255,255,0.02); }
-.main-nav button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+/* ── Main layout ── */
+#app{display:flex;flex-direction:column;height:calc(100vh - 48px);overflow:hidden}
+.tab-panel{display:none;flex:1;overflow:hidden;flex-direction:column}
+.tab-panel.active{display:flex}
 
-.tab-content { display: none; padding: 1.25rem; max-width: 1480px; margin: 0 auto; animation: fadeIn 0.2s ease; }
-.tab-content.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+/* ── Pipeline tab ── */
+#panel-pipeline{flex-direction:column}
+#pipeline-controls{padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+#pipeline-controls input,#pipeline-controls select{background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;font-size:12px;padding:5px 8px;border-radius:4px;outline:none}
+#pipeline-controls input:focus{border-color:var(--cyan)}
+.btn{padding:6px 12px;border-radius:4px;border:none;cursor:pointer;font:inherit;font-size:12px;font-weight:600;transition:.15s;white-space:nowrap}
+.btn-primary{background:var(--cyan);color:#000}
+.btn-primary:hover{background:#00b8e0}
+.btn-danger{background:var(--red);color:#fff}
+.btn-sm{padding:3px 8px;font-size:11px}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--text2)}
+.btn-outline:hover{border-color:var(--cyan);color:var(--cyan)}
+.btn-install{background:#7c3aed22;border:1px solid #7c3aed;color:#a855f7;padding:2px 7px;font-size:10px;border-radius:3px}
+.btn-install:hover{background:#7c3aed44}
+.sep{width:1px;height:20px;background:var(--border);margin:0 4px}
 
-/* ===== Cards ===== */
-.card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
-  transition: border-color 0.15s;
-}
-.card:hover { border-color: var(--border-light); }
-.card h2 { font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text); display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
-.card h3 { font-size: 0.88rem; margin-bottom: 0.5rem; color: var(--accent); }
+#config-toggle{cursor:pointer;display:flex;align-items:center;gap:5px;color:var(--text2);font-size:11px;border:1px solid var(--border);border-radius:4px;padding:4px 8px;transition:.15s}
+#config-toggle:hover{border-color:var(--border2);color:var(--text)}
 
-/* ===== Grids ===== */
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1rem; }
-.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
-.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
-.grid-5 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; }
+#config-panel{padding:12px 16px;background:#0b1220;border-bottom:1px solid var(--border);display:none;flex-wrap:wrap;gap:8px 16px}
+#config-panel.open{display:flex}
+.cfg-field{display:flex;flex-direction:column;gap:3px;min-width:180px}
+.cfg-field label{font-size:10px;color:var(--text2);letter-spacing:.05em}
+.cfg-field input{background:var(--card);border:1px solid var(--border);color:var(--text);font:inherit;font-size:11px;padding:4px 7px;border-radius:3px}
+.cfg-save-row{display:flex;align-items:flex-end;padding-bottom:2px}
+.cfg-save-row .btn{padding:4px 10px;font-size:11px}
 
-/* ===== Metric Cards ===== */
-.metric {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 1rem 1.25rem; text-align: center;
-  position: relative; overflow: hidden;
-}
-.metric::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: var(--accent); opacity: 0.5;
-}
-.metric .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); line-height: 1.2; font-family: var(--font-mono); }
-.metric .label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
-.metric.success::before { background: var(--success); }
-.metric.success .value { color: var(--success); }
-.metric.warning::before { background: var(--warning); }
-.metric.warning .value { color: var(--warning); }
-.metric.error::before { background: var(--error); }
-.metric.error .value { color: var(--error); }
-.metric.info::before { background: var(--info); }
-.metric.info .value { color: var(--info); }
-.metric.purple::before { background: var(--purple); }
-.metric.purple .value { color: var(--purple); }
-.metric.cyan::before { background: var(--cyan); }
-.metric.cyan .value { color: var(--cyan); }
+/* ── Flow canvas ── */
+#flow-wrap{flex:1;overflow-x:auto;overflow-y:auto;padding:24px 16px;position:relative;background:var(--terminal)}
+#flow-canvas{position:relative;display:inline-flex;flex-direction:row;align-items:center;gap:0;min-height:300px}
+#flow-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 
-/* ===== Forms ===== */
-.form-group { margin-bottom: 0.75rem; }
-.form-group label { display: block; font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.3rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-.form-group input, .form-group select, .form-group textarea {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); color: var(--text); padding: 0.55rem 0.75rem;
-  font-size: 0.86rem; outline: none; transition: border-color 0.15s;
-  font-family: inherit;
-}
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(14,165,233,0.15); }
-.form-group input::placeholder, .form-group textarea::placeholder { color: var(--text-muted); opacity: 0.6; }
-.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
+/* ── Phase node ── */
+.phase-node{position:relative;width:200px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;transition:.2s;cursor:pointer}
+.phase-node:hover{border-color:var(--border2);box-shadow:0 4px 20px #00000066}
+.phase-node.running{border-color:var(--cyan);animation:pulse-border 1.5s infinite}
+.phase-node.done{border-color:#00ff8844}
+.phase-node.skipped{opacity:.45}
+@keyframes pulse-border{0%,100%{box-shadow:0 0 6px var(--cyan)}50%{box-shadow:0 0 16px var(--cyan)}}
+.node-header{padding:8px 10px;display:flex;align-items:center;gap:6px}
+.phase-badge{font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:#ffffff11;white-space:nowrap}
+.node-title{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node-desc{padding:0 10px 6px;font-size:10px;color:var(--text2);line-height:1.4}
+.node-tools{padding:6px 10px;border-top:1px solid var(--border)}
+.tool-row{display:flex;align-items:center;gap:5px;padding:2px 0}
+.tool-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.tool-dot.ok{background:var(--green)}
+.tool-dot.missing{background:var(--red)}
+.tool-dot.python{background:var(--purple)}
+.tool-name{font-size:10px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis}
+.tool-hint{font-size:9px;color:var(--text3);cursor:help;margin-left:3px;flex-shrink:0}
+.tool-hint:hover{color:var(--cyan)}
+.tool-row .btn-install{margin-left:auto;flex-shrink:0}
+.node-keys{padding:6px 10px;border-top:1px solid var(--border);display:none}
+.node-keys.open{display:block}
+.node-keys-toggle{font-size:10px;color:var(--text2);cursor:pointer;margin-top:4px;padding:0 10px 6px}
+.node-keys-toggle:hover{color:var(--cyan)}
+.key-field{margin-bottom:4px}
+.key-field label{font-size:9px;color:var(--text3);display:block}
+.key-field input{background:var(--bg2);border:1px solid var(--border);color:var(--text);font:inherit;font-size:10px;padding:2px 5px;border-radius:3px;width:100%}
 
-.checkbox-group { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
-.checkbox-group label {
-  display: flex; align-items: center; gap: 0.4rem;
-  background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 0.4rem 0.75rem;
-  font-size: 0.8rem; cursor: pointer; transition: all 0.15s;
-  text-transform: none; font-weight: 500; color: var(--text-secondary);
-}
-.checkbox-group label:hover { border-color: var(--accent); }
-.checkbox-group input[type="checkbox"] { accent-color: var(--accent); }
+/* Phase connector arrow */
+.phase-arrow{width:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--border2);font-size:18px;user-select:none}
 
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
-  padding: 0.6rem 1.25rem; border-radius: var(--radius-sm); font-size: 0.86rem;
-  font-weight: 600; cursor: pointer; border: 1px solid transparent;
-  transition: all 0.15s; font-family: inherit;
-}
-.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
-.btn-danger { background: var(--error); color: #fff; border-color: var(--error); }
-.btn-danger:hover { background: #dc2626; }
-.btn-secondary { background: transparent; color: var(--text-muted); border-color: var(--border); }
-.btn-secondary:hover { color: var(--text); border-color: var(--text-muted); }
-.btn-sm { padding: 0.3rem 0.7rem; font-size: 0.76rem; }
-.btn-ghost { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.3rem 0.5rem; font-size: 0.82rem; }
-.btn-ghost:hover { color: var(--accent); }
+/* ── Console tab ── */
+#panel-console{flex-direction:column}
+#console-toolbar{padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0}
+#console-toolbar select{background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;font-size:12px;padding:5px 8px;border-radius:4px}
+#console-label{font-size:11px;color:var(--text2);flex:1}
+#console-body{flex:1;overflow-y:auto;background:var(--terminal);padding:12px;font-size:12px;line-height:1.6}
+#console-body .line{white-space:pre-wrap;word-break:break-all}
+#console-body .line.success{color:var(--green)}
+#console-body .line.error{color:var(--red)}
+#console-body .line.warn{color:var(--yellow)}
+#console-body .line.info{color:var(--cyan)}
+#console-body .line.phase{color:var(--cyan);font-weight:700;margin-top:8px}
+#console-body .line.plain{color:#7a8c9e}
 
-/* ===== Pills / Badges ===== */
-.pill {
-  display: inline-flex; align-items: center; gap: 0.25rem;
-  padding: 0.15rem 0.6rem; border-radius: 999px;
-  font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-}
-.pill-queued { background: #334155; color: #94a3b8; }
-.pill-running { background: var(--info-dim); color: #60a5fa; animation: pulse 2s infinite; }
-.pill-completed { background: var(--success-dim); color: #4ade80; }
-.pill-failed { background: var(--error-dim); color: #fca5a5; }
-.pill-stopped { background: #44403c; color: #a8a29e; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+/* ── Results tab ── */
+#panel-results{flex-direction:row}
+#results-tree{width:260px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--border);padding:8px 0;background:var(--bg2)}
+#results-tree .dir-header{padding:6px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:5px}
+#results-tree .dir-header:hover{background:var(--card)}
+#results-tree .file-item{padding:4px 12px 4px 22px;font-size:11px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:5px}
+#results-tree .file-item:hover{background:var(--card);color:var(--cyan)}
+#results-tree .file-item.active{color:var(--cyan);background:var(--card)}
+#results-preview{flex:1;overflow-y:auto;padding:16px;background:var(--bg)}
+#results-preview h4{margin-bottom:10px;color:var(--cyan);font-size:13px}
+#results-preview table{border-collapse:collapse;font-size:11px;width:100%}
+#results-preview th{background:var(--card);padding:5px 8px;text-align:left;border:1px solid var(--border);font-weight:600;color:var(--text2);font-size:10px}
+#results-preview td{padding:4px 8px;border:1px solid var(--border);color:var(--text);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#results-preview tr:hover td{background:var(--card)}
+#results-preview pre{background:var(--terminal);padding:12px;border-radius:4px;font-size:11px;white-space:pre-wrap;color:#7fdfb4;border:1px solid var(--border);max-height:600px;overflow-y:auto}
+.placeholder{color:var(--text3);font-size:12px;padding:40px;text-align:center}
 
-.severity-critical { background: var(--error-dim); color: #fca5a5; }
-.severity-high { background: #7c2d12; color: #fdba74; }
-.severity-medium { background: var(--warning-dim); color: #fcd34d; }
-.severity-low { background: var(--info-dim); color: #93c5fd; }
-.severity-info { background: #1e293b; color: #94a3b8; }
+/* ── Intelligence tab ── */
+#panel-intel{flex-direction:column}
+#intel-top{display:flex;gap:16px;padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap;flex-shrink:0;align-items:flex-end}
+#intel-top .cfg-field{min-width:160px}
+#intel-context{padding:10px 16px;background:#060c18;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.context-badge{font-size:10px;padding:3px 8px;border-radius:3px;background:var(--card);border:1px solid var(--border2);color:var(--text2)}
+.action-btns{display:flex;gap:6px;flex-wrap:wrap}
+.action-btn{padding:4px 10px;font-size:11px;border-radius:4px;cursor:pointer;border:1px solid;font:inherit;font-weight:500;transition:.15s}
+.action-btn.report{border-color:#f59e0b;color:#f59e0b;background:transparent}
+.action-btn.report:hover{background:#f59e0b22}
+.action-btn.summarize{border-color:var(--cyan);color:var(--cyan);background:transparent}
+.action-btn.summarize:hover{background:#00d4ff22}
+.action-btn.prioritize{border-color:var(--green);color:var(--green);background:transparent}
+.action-btn.prioritize:hover{background:#00ff8822}
+.action-btn.critical{border-color:var(--red);color:var(--red);background:transparent}
+.action-btn.critical:hover{background:#ff444422}
+#intel-chat{flex:1;overflow-y:auto;padding:16px;background:var(--terminal);display:flex;flex-direction:column;gap:12px}
+.chat-msg{padding:10px 14px;border-radius:6px;font-size:12px;line-height:1.7;max-width:90%}
+.chat-msg.user{align-self:flex-end;background:var(--card2);border:1px solid var(--border2)}
+.chat-msg.bot{align-self:flex-start;background:#0a1f1a;border:1px solid #004d3322;color:var(--green);white-space:pre-wrap;max-width:100%}
+.chat-msg.error{border-color:var(--red);color:var(--red);background:#1a0505}
+.chat-spinner{align-self:center;color:var(--cyan);font-size:11px;animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+#intel-input{padding:12px 16px;background:var(--bg2);border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
+#intel-input textarea{flex:1;background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;font-size:12px;padding:8px 10px;border-radius:4px;resize:none;height:44px;outline:none}
+#intel-input textarea:focus{border-color:var(--cyan)}
 
-/* ===== Tables ===== */
-.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-th {
-  text-align: left; padding: 0.6rem 0.75rem; border-bottom: 2px solid var(--border);
-  color: var(--text-muted); font-weight: 600; font-size: 0.72rem;
-  text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;
-  position: sticky; top: 0; background: var(--bg-card); z-index: 1;
-}
-td { padding: 0.45rem 0.75rem; border-bottom: 1px solid rgba(30,45,74,0.5); vertical-align: top; }
-tr:hover td { background: rgba(255,255,255,0.015); }
-.http-2xx { color: var(--success); font-weight: 600; font-family: var(--font-mono); }
-.http-3xx { color: var(--cyan); font-weight: 600; font-family: var(--font-mono); }
-.http-4xx { color: var(--warning); font-weight: 600; font-family: var(--font-mono); }
-.http-5xx { color: var(--error); font-weight: 600; font-family: var(--font-mono); }
+/* ── History tab ── */
+#panel-history{flex-direction:column}
+#history-body{flex:1;overflow-y:auto;padding:16px}
+#history-body table{border-collapse:collapse;width:100%}
+#history-body th{background:var(--card);padding:8px 10px;text-align:left;border:1px solid var(--border);font-size:11px;color:var(--text2);font-weight:600}
+#history-body td{padding:7px 10px;border:1px solid var(--border);font-size:11px}
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600}
+.badge.running{background:#00d4ff22;color:var(--cyan);border:1px solid var(--cyan)}
+.badge.completed{background:#00ff8822;color:var(--green);border:1px solid var(--green)}
+.badge.failed{background:#ff444422;color:var(--red);border:1px solid var(--red)}
+.badge.queued{background:#ffd70022;color:var(--yellow);border:1px solid var(--yellow)}
+.lnk{color:var(--cyan);cursor:pointer;text-decoration:none}
+.lnk:hover{text-decoration:underline}
 
-/* ===== Log Viewer ===== */
-.log-box {
-  background: var(--bg-terminal); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 0.75rem 1rem;
-  font-family: var(--font-mono); font-size: 0.76rem; line-height: 1.65;
-  white-space: pre-wrap; word-break: break-all; overflow-y: auto;
-  max-height: 60vh; color: #94a3b8; position: relative;
-}
-.log-box .ansi-red, .log-line-error { color: var(--error); }
-.log-box .ansi-yellow, .log-line-warning { color: var(--warning); }
-.log-box .ansi-green, .log-line-success { color: var(--success); }
-.log-box .ansi-blue, .log-line-info { color: var(--info); }
-.log-box .ansi-cyan, .log-line-step { color: var(--cyan); font-weight: 600; }
-.log-box .ansi-bold { font-weight: 700; }
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
-/* ===== Inner Tabs ===== */
-.inner-tabs { display: flex; gap: 0; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); overflow-x: auto; }
-.inner-tabs button { background: none; border: none; color: var(--text-muted); padding: 0.5rem 1rem; font-size: 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; font-weight: 500; transition: all 0.15s; }
-.inner-tabs button:hover { color: var(--text-secondary); }
-.inner-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
-.inner-panel { display: none; }
-.inner-panel.active { display: block; }
+/* ── Toast ── */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--card2);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;font-size:12px;z-index:9999;display:none;max-width:300px}
+#toast.ok{border-color:var(--green);color:var(--green)}
+#toast.err{border-color:var(--red);color:var(--red)}
+#toast.info{border-color:var(--cyan);color:var(--cyan)}
 
-/* ===== Chat ===== */
-.chat-messages { max-height: 450px; overflow-y: auto; margin-bottom: 0.75rem; padding: 0.5rem 0; }
-.chat-msg { padding: 0.65rem 0.85rem; margin-bottom: 0.5rem; border-radius: 10px; font-size: 0.84rem; line-height: 1.6; }
-.chat-msg.user { background: var(--info-dim); margin-left: 3rem; border-bottom-right-radius: 3px; }
-.chat-msg.assistant { background: var(--bg-input); border: 1px solid var(--border); margin-right: 3rem; border-bottom-left-radius: 3px; }
-.chat-msg .role { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.25rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; }
-
-/* ===== Details/Accordion ===== */
-details { margin-bottom: 0.5rem; }
-summary { cursor: pointer; padding: 0.6rem 0.85rem; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); font-size: 0.86rem; font-weight: 500; transition: background 0.15s; list-style: none; display: flex; justify-content: space-between; align-items: center; }
-summary::-webkit-details-marker { display: none; }
-summary::after { content: '+'; color: var(--text-muted); font-size: 1rem; font-weight: 300; }
-details[open] summary::after { content: '-'; }
-summary:hover { background: rgba(255,255,255,0.04); }
-details[open] summary { margin-bottom: 0.5rem; }
-
-/* ===== File List ===== */
-.file-list { list-style: none; padding-left: 0; }
-.file-list li { padding: 0.35rem 0.6rem; border-bottom: 1px solid rgba(30,45,74,0.3); display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; }
-.file-list li:hover { background: rgba(255,255,255,0.02); }
-.file-size { color: var(--text-muted); font-size: 0.72rem; font-family: var(--font-mono); }
-
-/* ===== Architecture Pipeline ===== */
-.pipeline-step {
-  padding: 0.6rem 0.85rem; border-radius: var(--radius-sm);
-  border-left: 3px solid var(--accent); margin-bottom: 0.5rem;
-  background: rgba(14,165,233,0.05);
-}
-.pipeline-step strong { font-size: 0.84rem; display: block; margin-bottom: 0.15rem; }
-.pipeline-step p { font-size: 0.76rem; color: var(--text-muted); margin: 0; }
-
-/* ===== File Viewer Modal ===== */
-.modal-overlay {
-  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0,0,0,0.75); z-index: 200; padding: 1.5rem;
-  backdrop-filter: blur(4px);
-}
-.modal-inner {
-  max-width: 1200px; margin: 0 auto; height: 100%;
-  display: flex; flex-direction: column;
-}
-.modal-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 0.75rem; flex-shrink: 0;
-}
-.modal-body { flex: 1; overflow: auto; }
-
-/* ===== Empty State ===== */
-.empty-state { text-align: center; padding: 3rem 1.5rem; color: var(--text-muted); }
-.empty-state .icon { font-size: 2.5rem; margin-bottom: 0.75rem; opacity: 0.3; }
-.empty-state p { font-size: 0.88rem; max-width: 360px; margin: 0 auto; }
-
-/* ===== Utility ===== */
-.text-muted { color: var(--text-muted); }
-.text-secondary { color: var(--text-secondary); }
-.text-sm { font-size: 0.82rem; }
-.text-xs { font-size: 0.74rem; }
-.mt-05 { margin-top: 0.25rem; }
-.mt-1 { margin-top: 0.5rem; }
-.mt-2 { margin-top: 1rem; }
-.mb-05 { margin-bottom: 0.25rem; }
-.mb-1 { margin-bottom: 0.5rem; }
-.mb-2 { margin-bottom: 1rem; }
-.flex-between { display: flex; justify-content: space-between; align-items: center; }
-.flex-center { display: flex; align-items: center; gap: 0.5rem; }
-.gap-05 { gap: 0.25rem; }
-.gap-1 { gap: 0.5rem; }
-.hidden { display: none !important; }
-code { font-family: var(--font-mono); font-size: 0.82em; background: rgba(255,255,255,0.05); padding: 0.1rem 0.35rem; border-radius: 3px; }
-.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; display: inline-block; vertical-align: bottom; }
-
-/* ===== Responsive ===== */
-@media (max-width: 768px) {
-  .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
-  .form-row { grid-template-columns: 1fr; }
-  .tab-content { padding: 0.75rem; }
-  .modal-overlay { padding: 0.5rem; }
-}
+/* ── Builder tab ── */
+#panel-builder{flex-direction:row}
+#builder-toolbox{width:220px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--border);background:var(--bg2)}
+#builder-main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#builder-controls{padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+#builder-canvas-wrap{flex:1;overflow-x:auto;overflow-y:auto;padding:24px 16px;background:var(--terminal)}
+#builder-canvas{display:inline-flex;flex-direction:row;align-items:flex-start;gap:0;min-height:200px;min-width:100%}
+#builder-empty{color:var(--text3);font-size:12px;padding:40px;text-align:center;width:100%}
+.tb-cat{padding:8px 12px 4px;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-top:4px}
+.tb-tool{padding:5px 12px 5px 16px;font-size:11px;color:var(--text2);cursor:grab;display:flex;align-items:center;gap:6px;user-select:none}
+.tb-tool:hover{background:var(--card);color:var(--text)}
+.tb-tool.unavail{opacity:.45}
+.bn{width:180px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:grab;transition:.15s;position:relative}
+.bn:hover{border-color:var(--border2)}
+.bn.drag-over{border-color:var(--cyan)!important;box-shadow:0 0 10px #00d4ff44}
+.bn-header{padding:6px 8px;display:flex;align-items:center;gap:5px}
+.bn-title{flex:1;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bn-rm{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;flex-shrink:0}
+.bn-rm:hover{color:var(--red)}
+.bn-meta{padding:2px 8px 4px;font-size:9px;color:var(--text3);line-height:1.4}
+.bn-warn{padding:0 8px 4px;font-size:9px;color:var(--red)}
+.bn-flags{padding:4px 8px 6px;border-top:1px solid var(--border)}
+.bn-flags-label{font-size:9px;color:var(--text3);margin-bottom:2px}
+.bn-flags input{background:var(--bg2);border:1px solid var(--border);color:var(--text2);font:inherit;font-size:10px;padding:2px 5px;border-radius:3px;width:100%;outline:none}
+.bn-flags input:focus{border-color:var(--cyan)}
+/* Console stdin */
+#stdin-row{padding:8px 12px;background:#0a1a0a;border-top:2px solid #00ff8833;display:none;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap}
+#stdin-row.visible{display:flex}
+#stdin-prompt-label{font-size:11px;color:var(--yellow);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+#stdin-input{flex:1;min-width:100px;background:var(--card);border:1px solid #00ff8866;color:var(--text);font:inherit;font-size:12px;padding:5px 8px;border-radius:3px;outline:none}
+#stdin-input:focus{border-color:var(--green)}
+.btn-yn{padding:4px 10px;font-size:11px;border-radius:3px;cursor:pointer;font:inherit;font-weight:700;border:1px solid}
+.btn-yes{background:transparent;border-color:var(--green);color:var(--green)}
+.btn-yes:hover{background:#00ff8822}
+.btn-no{background:transparent;border-color:var(--red);color:var(--red)}
+.btn-no:hover{background:#ff444422}
 </style>
 </head>
 <body>
 
-<header class="app-header">
-  <h1><span class="rek">REK</span> Dashboard</h1>
-  <div class="header-right">
-    <span class="header-badge" id="activeCount">0 active</span>
-    <span class="header-meta" id="headerClock"></span>
+<div id="header">
+  <div class="logo">⚡ RE<span>K</span></div>
+  <div id="tabs">
+    <button class="tab-btn active" onclick="switchTab('pipeline')">Pipeline</button>
+    <button class="tab-btn" onclick="switchTab('console')">Console</button>
+    <button class="tab-btn" onclick="switchTab('builder')">Builder</button>
+    <button class="tab-btn" onclick="switchTab('results')">Results</button>
+    <button class="tab-btn" onclick="switchTab('intel')">Intelligence</button>
+    <button class="tab-btn" onclick="switchTab('history')">History</button>
   </div>
-</header>
-
-<nav class="main-nav" id="mainNav">
-  <button class="active" data-tab="dashboard">Dashboard</button>
-  <button data-tab="scan">New Scan</button>
-  <button data-tab="live">Live Terminal</button>
-  <button data-tab="results">Results</button>
-  <button data-tab="history">History</button>
-  <button data-tab="llm">LLM Assistant</button>
-</nav>
-
-<!-- ==================== DASHBOARD ==================== -->
-<div class="tab-content active" id="tab-dashboard">
-  <div class="grid-5 mb-2" id="dashMetrics">
-    <div class="metric info"><div class="value" id="mTotal">--</div><div class="label">Total Scans</div></div>
-    <div class="metric cyan"><div class="value" id="mRunning">--</div><div class="label">Active</div></div>
-    <div class="metric success"><div class="value" id="mCompleted">--</div><div class="label">Completed</div></div>
-    <div class="metric error"><div class="value" id="mFailed">--</div><div class="label">Failed</div></div>
-    <div class="metric purple"><div class="value" id="mResults">--</div><div class="label">Result Sets</div></div>
-  </div>
-
-  <div class="grid-2">
-    <div class="card">
-      <h2>Recent Scans</h2>
-      <div class="tbl-wrap" style="max-height:320px;overflow-y:auto;">
-        <table id="dashJobsTable">
-          <thead><tr><th>ID</th><th>Domain</th><th>Type</th><th>Status</th><th>When</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="mt-1 text-xs text-muted flex-between">
-        <span>Showing latest 10</span>
-        <a href="#" onclick="switchTab('history');return false;">View all</a>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Recon Pipeline</h2>
-      <div class="pipeline-step" style="border-color:var(--accent);">
-        <strong>1. Subdomain Discovery</strong>
-        <p>DNS Dumpster, crt.sh, brute-force, dnsgen, gotator, ripgen, puredns</p>
-      </div>
-      <div class="pipeline-step" style="border-color:var(--success);">
-        <strong>2. Live Host Probing</strong>
-        <p>HTTPX fingerprinting, naabu port scanning, service detection</p>
-      </div>
-      <div class="pipeline-step" style="border-color:var(--warning);">
-        <strong>3. Endpoint Crawling</strong>
-        <p>Gospider, Katana, GAU -- URL discovery, JS extraction, secret scanning</p>
-      </div>
-      <div class="pipeline-step" style="border-color:var(--error);">
-        <strong>4. Vulnerability Analysis</strong>
-        <p>GF patterns (XSS, SQLi, SSRF, LFI, RCE, SSTI, IDOR), Nuclei templates</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="card" id="dashResultsCard">
-    <h2>Latest Result Sets</h2>
-    <div id="dashResultsList" class="text-sm text-muted">Loading...</div>
-  </div>
+  <div id="hdr-status">● No active scan</div>
 </div>
 
-<!-- ==================== NEW SCAN ==================== -->
-<div class="tab-content" id="tab-scan">
-  <div class="grid-2">
-    <div class="card">
-      <h2>Playbook Scan</h2>
-      <p class="text-sm text-muted mb-1">Run a multi-step automated recon playbook against a target domain.</p>
-      <form id="formPlaybook">
-        <div class="form-group">
-          <label>Target Domain</label>
-          <input name="domain" placeholder="example.com" required autocomplete="off" spellcheck="false">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Playbook Version</label>
-            <select name="playbook">
-              <option value="v1">v1 -- Full 8-step pipeline</option>
-              <option value="v2">v2 -- Katana / HTTPX / Nuclei</option>
-              <option value="standard">Standard</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Threads</label>
-            <input name="threads" type="number" value="100" min="1" max="500">
-          </div>
-        </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.25rem;">Launch Playbook</button>
-      </form>
-    </div>
+<div id="app">
 
-    <div class="card">
-      <h2>Module Scan</h2>
-      <p class="text-sm text-muted mb-1">Run individual REK modules for focused reconnaissance.</p>
-      <form id="formModule">
-        <div class="form-group">
-          <label>Target Domain / Input</label>
-          <input name="domain" placeholder="example.com" required autocomplete="off" spellcheck="false">
-        </div>
-        <div class="form-group">
-          <label>Modules</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" name="modules" value="subdomain" checked> Subdomain Enum</label>
-            <label><input type="checkbox" name="modules" value="http"> HTTP Check</label>
-            <label><input type="checkbox" name="modules" value="directory"> Dir Scan</label>
-            <label><input type="checkbox" name="modules" value="email"> Email Harvest</label>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Timeout (s)</label>
-            <input name="timeout" type="number" value="10" min="1">
-          </div>
-          <div class="form-group">
-            <label>Concurrency</label>
-            <input name="concurrency" type="number" value="50" min="1">
-          </div>
-        </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.25rem;">Start Module Scan</button>
-      </form>
+<!-- ── PIPELINE ── -->
+<div id="panel-pipeline" class="tab-panel active">
+  <div id="pipeline-controls">
+    <input id="domainInput" type="text" placeholder="target.com" style="width:200px">
+    <input id="threadsInput" type="number" value="100" style="width:70px">
+    <div class="sep"></div>
+    <button class="btn btn-primary" onclick="launchPipeline()">▶ Launch Pipeline</button>
+    <button class="btn btn-outline" onclick="stopScan()">■ Stop</button>
+    <div class="sep"></div>
+    <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px;cursor:pointer">
+      <input type="checkbox" id="bb-mode-toggle" onchange="toggleBBMode(this.checked)"> BB Mode
+    </label>
+    <div id="bb-scope-row" style="display:none;align-items:center;gap:6px">
+      <input id="bb-scope" type="text" placeholder="*.example.com, !internal.*" style="width:200px;background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;font-size:11px;padding:4px 7px;border-radius:3px">
+      <select id="bb-severity" style="background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;padding:4px 6px;border-radius:3px;font-size:11px">
+        <option value="all">All findings</option>
+        <option value="critical_high">Critical + High only</option>
+        <option value="critical">Critical only</option>
+      </select>
+    </div>
+    <div class="sep"></div>
+    <div id="config-toggle" onclick="toggleConfig()">⚙ API Keys &amp; Config ▾</div>
+    <div id="scan-status" style="font-size:11px;color:var(--text2)"></div>
+  </div>
+
+  <div id="config-panel">
+    <!-- Fields populated by JS from /api/config/get -->
+    <div class="cfg-save-row">
+      <button class="btn btn-outline" onclick="saveConfig()">💾 Save Config</button>
+    </div>
+  </div>
+
+  <div id="flow-wrap">
+    <div id="flow-canvas">
+      <svg id="flow-svg"></svg>
+      <!-- Phase nodes rendered by JS -->
     </div>
   </div>
 </div>
 
-<!-- ==================== LIVE TERMINAL ==================== -->
-<div class="tab-content" id="tab-live">
-  <div class="card" id="liveNoJob">
-    <div class="empty-state">
-      <div class="icon">&gt;_</div>
-      <p>No active scan selected. Start a new scan or pick a running job from the dashboard.</p>
-    </div>
+<!-- ── CONSOLE ── -->
+<div id="panel-console" class="tab-panel">
+  <div id="console-toolbar">
+    <select id="console-job-select" onchange="loadConsoleJob(this.value)">
+      <option value="">— Select job —</option>
+    </select>
+    <span id="console-label"></span>
+    <div style="flex:1"></div>
+    <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input type="checkbox" id="autoScroll" checked> Auto-scroll
+    </label>
+    <button class="btn btn-outline btn-sm" onclick="clearConsole()">Clear</button>
   </div>
-  <div class="hidden" id="livePanel">
-    <div class="card">
-      <div class="flex-between mb-1">
-        <div class="flex-center">
-          <h2 style="margin:0;">Terminal</h2>
-          <code id="liveJobId" class="text-xs">--</code>
-          <span id="liveStatus" class="pill pill-queued">--</span>
-        </div>
-        <div class="flex-center gap-1">
-          <span id="liveDomain" class="text-sm text-secondary"></span>
-          <button class="btn btn-danger btn-sm" id="btnStop" onclick="stopCurrentJob()" style="display:none;">Stop</button>
-          <button class="btn btn-secondary btn-sm" onclick="closeLivePanel()">Close</button>
-        </div>
-      </div>
-      <div class="log-box" id="liveLog" style="max-height:70vh;min-height:300px;"></div>
-      <div class="flex-between mt-05">
-        <span class="text-xs text-muted" id="liveLineCount">0 lines</span>
-        <label class="text-xs text-muted flex-center gap-05"><input type="checkbox" id="liveAutoScroll" checked> Auto-scroll</label>
-      </div>
-    </div>
+  <div id="console-body"></div>
+  <div id="stdin-row">
+    <span id="stdin-prompt-label">⚡ Input required</span>
+    <input id="stdin-input" type="text" placeholder="Type your response...">
+    <button class="btn-yn btn-yes" onclick="sendStdinText('y')">Y</button>
+    <button class="btn-yn btn-no" onclick="sendStdinText('n')">N</button>
+    <button class="btn btn-outline btn-sm" onclick="sendStdin()">Send</button>
+    <button class="btn btn-outline btn-sm" onclick="hideStdinRow()">✕</button>
   </div>
 </div>
 
-<!-- ==================== RESULTS ==================== -->
-<div class="tab-content" id="tab-results">
-  <div id="resultsBrowser"></div>
-</div>
-
-<!-- ==================== HISTORY ==================== -->
-<div class="tab-content" id="tab-history">
-  <div class="card">
-    <div class="flex-between mb-1">
-      <h2 style="margin:0;">Scan History</h2>
-      <button class="btn btn-secondary btn-sm" onclick="refreshHistory()">Refresh</button>
-    </div>
-    <div class="tbl-wrap">
-      <table id="historyTable">
-        <thead><tr><th>ID</th><th>Domain</th><th>Type</th><th>Status</th><th>Started</th><th>Duration</th><th>Exit</th><th>Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+<!-- ── BUILDER ── -->
+<div id="panel-builder" class="tab-panel">
+  <div id="builder-toolbox">
+    <!-- populated by renderToolbox() -->
   </div>
-</div>
-
-<!-- ==================== LLM ASSISTANT ==================== -->
-<div class="tab-content" id="tab-llm">
-  <div class="grid-2">
-    <div class="card">
-      <h2>LLM Assistant</h2>
-      <p class="text-sm text-muted mb-1">Ask the REK LLM assistant for recon guidance, finding prioritization, or analysis help.</p>
-      <form id="formLLM">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Provider</label>
-            <select name="provider">
-              <option value="local">Local (Ollama)</option>
-              <option value="remote">Remote (OpenAI-compatible)</option>
-            </select>
+  <div id="builder-main">
+    <div id="builder-controls">
+      <input id="builder-domain" type="text" placeholder="target.com" style="width:180px;background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;font-size:12px;padding:5px 8px;border-radius:4px;outline:none">
+      <button class="btn btn-primary" onclick="runBuilderPipeline()">&#9654; Run Pipeline</button>
+      <button class="btn btn-outline" onclick="previewBuilderScript()">&#128196; Preview Script</button>
+      <button class="btn btn-outline" onclick="clearBuilder()">&#10005; Clear</button>
+      <select id="pipeline-template" onchange="loadPipelineTemplate(this.value)" style="background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;padding:4px 8px;border-radius:4px;font-size:11px">
+        <option value="">&#128203; Load Template...</option>
+        <option value="full_recon">Full Bug Bounty Recon</option>
+        <option value="quick_surface">Quick Attack Surface</option>
+        <option value="takeover_hunt">Subdomain Takeover Hunt</option>
+        <option value="api_audit">API Security Audit</option>
+        <option value="osint_deep">Deep OSINT</option>
+      </select>
+    </div>
+    <div id="builder-canvas-wrap"
+      ondragover="event.preventDefault()"
+      ondrop="onCanvasDrop(event)">
+      <div id="builder-canvas">
+        <div id="builder-empty">
+          <div style="text-align:center;padding:40px 20px;max-width:500px">
+            <div style="font-size:24px;margin-bottom:12px">&#128296;</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Build Your Custom Pipeline</div>
+            <div style="font-size:11px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+              Drag tools from the left panel or click them to add.<br>
+              Tools run in sequence &#8212; each step&#39;s output feeds the next.<br>
+              Add extra flags per-tool using the flags input on each node.
+            </div>
+            <div style="font-size:10px;color:var(--text3);line-height:1.8">
+              &#128161; <b style="color:var(--cyan)">Bug Bounty tip:</b> Start with subfinder &#8594; httpx &#8594; gospider &#8594; gf &#8594; nuclei<br>
+              &#128161; <b style="color:var(--cyan)">Takeover tip:</b> subfinder &#8594; subzy + Takeover Check<br>
+              &#128161; <b style="color:var(--cyan)">OSINT tip:</b> OSINT Engine &#8594; GitHub Dork &#8594; AI Triage
+            </div>
           </div>
-          <div class="form-group">
-            <label>Model</label>
-            <input name="model" placeholder="llama3.1 / gpt-4o-mini">
-          </div>
-        </div>
-        <div class="form-group">
-          <label>API Key (remote only)</label>
-          <input name="api_key" type="password" placeholder="sk-...">
-        </div>
-        <div class="form-group">
-          <label>Prompt</label>
-          <textarea name="prompt" rows="3" placeholder="e.g., Analyze these subdomains and suggest priority targets..." style="resize:vertical;"></textarea>
-        </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;">Ask LLM</button>
-      </form>
-    </div>
-    <div class="card">
-      <h2>Conversation</h2>
-      <div class="chat-messages" id="chatMessages">
-        <div class="chat-msg assistant">
-          <div class="role">Assistant</div>
-          Ready. Ask me about recon strategies, finding analysis, or tool usage.
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ==================== FILE VIEWER MODAL ==================== -->
-<div class="modal-overlay" id="fileModal">
-  <div class="modal-inner">
-    <div class="modal-header">
-      <h2 id="fileModalTitle" style="font-size:0.9rem;color:var(--text);font-family:var(--font-mono);"></h2>
-      <button class="btn btn-secondary btn-sm" onclick="closeFileModal()">Close (Esc)</button>
+<!-- ── RESULTS ── -->
+<div id="panel-results" class="tab-panel">
+  <div id="results-tree">
+    <div id="wordlists-section" style="margin-top:8px;border-top:1px solid var(--border)"></div>
+  </div>
+  <div id="results-preview"><div class="placeholder">← Select a file to preview</div></div>
+</div>
+
+<!-- ── INTELLIGENCE ── -->
+<div id="panel-intel" class="tab-panel">
+  <div id="intel-top">
+    <div class="cfg-field" style="min-width:120px">
+      <label>PROVIDER</label>
+      <select id="llm-provider" style="background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;padding:4px 6px;border-radius:3px">
+        <option value="local">Local (Ollama)</option>
+        <option value="remote">Remote API</option>
+      </select>
     </div>
-    <div class="card modal-body" style="padding:0;" id="fileModalBody"></div>
+    <div class="cfg-field">
+      <label>MODEL</label>
+      <input id="llm-model" type="text" placeholder="llama3.1 / gpt-4o" style="width:160px">
+    </div>
+    <div class="cfg-field" id="llm-apikey-field" style="display:none">
+      <label>API KEY</label>
+      <input id="llm-apikey" type="password" placeholder="sk-..." style="width:200px">
+    </div>
+    <div class="cfg-field" id="llm-url-field" style="display:none">
+      <label>BASE URL</label>
+      <input id="llm-baseurl" type="text" placeholder="http://127.0.0.1:11434" style="width:200px">
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="testLLM()" style="margin-top:auto">Test</button>
+  </div>
+
+  <div id="intel-context">
+    <select id="result-dir-select" style="background:var(--card);border:1px solid var(--border2);color:var(--text);font:inherit;padding:4px 6px;border-radius:3px;font-size:11px">
+      <option value="">— Load results context —</option>
+    </select>
+    <button class="btn btn-outline btn-sm" onclick="loadResultContext()">📂 Load</button>
+    <span id="context-badge" class="context-badge" style="display:none"></span>
+    <div style="flex:1"></div>
+    <div class="action-btns">
+      <button class="action-btn report" onclick="runAction('report')">📋 Generate Report</button>
+      <button class="action-btn summarize" onclick="runAction('summarize')">📊 Summarize</button>
+      <button class="action-btn prioritize" onclick="runAction('prioritize')">🎯 Prioritize</button>
+      <button class="action-btn critical" onclick="runAction('critical')">⚠ Critical Paths</button>
+      <button class="action-btn" onclick="runAction('attack_chains')" style="border-color:#ff6b35;color:#ff6b35">🔗 Attack Chains</button>
+      <button class="action-btn" onclick="runAction('quick_wins')" style="border-color:#ffd700;color:#ffd700">⚡ Quick Wins</button>
+      <button class="action-btn" onclick="runAction('bb_report')" style="border-color:#00d4ff;color:#00d4ff;background:transparent">&#127919; BB Report</button>
+    </div>
+  </div>
+
+  <div id="intel-chat"></div>
+
+  <div id="intel-input">
+    <textarea id="intel-prompt" placeholder="Ask a question about the scan results... (Enter to send, Shift+Enter for newline)"
+      onkeydown="handleIntelKey(event)"></textarea>
+    <button class="btn btn-primary" onclick="sendIntelPrompt()">Send</button>
   </div>
 </div>
+
+<!-- ── HISTORY ── -->
+<div id="panel-history" class="tab-panel">
+  <div id="history-toolbar" style="padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;gap:8px;align-items:center">
+    <span style="font-size:12px;color:var(--text2)">Scan History</span>
+    <button class="btn btn-outline btn-sm" onclick="refreshHistory()">⟳ Refresh</button>
+  </div>
+  <div id="history-body" style="flex:1;overflow-y:auto;padding:0 16px 16px">
+    <table style="width:100%;border-collapse:collapse;margin-top:12px">
+      <thead>
+        <tr>
+          <th style="padding:8px 10px;background:var(--card);border:1px solid var(--border);font-size:11px;text-align:left;color:var(--text2)">ID</th>
+          <th style="padding:8px 10px;background:var(--card);border:1px solid var(--border);font-size:11px;text-align:left;color:var(--text2)">Domain</th>
+          <th style="padding:8px 10px;background:var(--card);border:1px solid var(--border);font-size:11px;text-align:left;color:var(--text2)">Type</th>
+          <th style="padding:8px 10px;background:var(--card);border:1px solid var(--border);font-size:11px;text-align:left;color:var(--text2)">Status</th>
+          <th style="padding:8px 10px;background:var(--card);border:1px solid var(--border);font-size:11px;text-align:left;color:var(--text2)">Started</th>
+          <th style="padding:8px 10px;background:var(--card);border:1px solid var(--border);font-size:11px;text-align:left;color:var(--text2)">Duration</th>
+          <th style="padding:8px 10px;background:var(--card);border:1px solid var(--border);font-size:11px;text-align:left;color:var(--text2)">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<div id="toast"></div>
 
 <script>
 // =====================================================================
-//  State
+//  Phase definitions
 // =====================================================================
-let currentSSE = null;
-let currentJobId = null;
-let liveLineCount = 0;
-
-// =====================================================================
-//  Tab Navigation
-// =====================================================================
-document.querySelectorAll('.main-nav button').forEach(btn => {
-  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-});
-
-function switchTab(tab) {
-  document.querySelectorAll('.main-nav button').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  const btn = document.querySelector(`[data-tab="${tab}"]`);
-  if (btn) btn.classList.add('active');
-  const el = document.getElementById('tab-' + tab);
-  if (el) el.classList.add('active');
-  if (tab === 'results') loadResults();
-  if (tab === 'history') refreshHistory();
-}
+const PHASES = [
+  { id:'p0',  num:'0',   label:'Cloud Recon',       color:'#7c3aed', tools:['(Py) cloud_recon'],    cli:[],                         desc:'S3 / Azure / GCP bucket enumeration', keys:[] },
+  { id:'p1',  num:'1',   label:'Subdomain Enum',     color:'#0ea5e9', tools:['subfinder','assetfinder','findomain','chaos','github-subdomains'], cli:['subfinder','assetfinder','findomain','chaos'], desc:'Multi-source subdomain discovery', keys:['CHAOS_API_KEY','GITHUB_API_TOKEN','GITLAB_API_TOKEN'] },
+  { id:'p2',  num:'2',   label:'Permutation',        color:'#06b6d4', tools:['dnsgen','goaltdns','gotator','ripgen','puredns'],       cli:['dnsgen','goaltdns','gotator','ripgen','puredns'], desc:'DNS permutation & brute-force', keys:[] },
+  { id:'p25', num:'2.5', label:'ASN Expansion',      color:'#10b981', tools:['asnmap','(Py) asn_recon'],  cli:['asnmap'],            desc:'IP range & ASN enumeration', keys:[] },
+  { id:'p3',  num:'3',   label:'Live Detection',     color:'#f59e0b', tools:['httpx'],                    cli:['httpx'],             desc:'HTTP probing & fingerprinting', keys:[] },
+  { id:'p35', num:'3.5', label:'Takeover Check',     color:'#ef4444', tools:['subzy','(Py) takeover'],    cli:['subzy'],             desc:'Subdomain takeover detection', keys:[] },
+  { id:'p36', num:'3.6', label:'Favicon Scan',       color:'#8b5cf6', tools:['(Py) favicon'],             cli:[],                    desc:'MurmurHash3 fingerprinting', keys:[] },
+  { id:'p37', num:'3.7', label:'Headers Audit',      color:'#f97316', tools:['(Py) headers_audit'],       cli:[],                    desc:'CORS & security headers', keys:[] },
+  { id:'p4',  num:'4',   label:'Port Scanning',      color:'#ec4899', tools:['naabu'],                    cli:['naabu'],             desc:'Port & service detection', keys:[] },
+  { id:'p45', num:'4.5', label:'Wayback Mining',     color:'#14b8a6', tools:['waybackurls','gau'],         cli:['waybackurls','gau'],  desc:'Passive historical URLs', keys:[] },
+  { id:'p5',  num:'5',   label:'Content Discovery',  color:'#3b82f6', tools:['gospider','katana','gau'],   cli:['gospider','katana','gau'], desc:'Web spidering & crawling', keys:[] },
+  { id:'p6',  num:'6',   label:'Vuln Analysis',      color:'#f59e0b', tools:['gf'],                        cli:['gf'],                desc:'GF patterns (XSS/SQLi/SSRF/...)', keys:[] },
+  { id:'p75', num:'7.5', label:'Param Discovery',    color:'#06b6d4', tools:['arjun','(Py) param_disco'],  cli:['arjun'],             desc:'Hidden parameter discovery', keys:[] },
+  { id:'p76', num:'7.6', label:'Nuclei Scan',        color:'#ef4444', tools:['nuclei'],                    cli:['nuclei'],            desc:'Template-based vuln scanning', keys:[] },
+  { id:'p77', num:'7.7', label:'GitHub Dorking',     color:'#a855f7', tools:['(Py) github_dork'],          cli:[],                    desc:'Secrets & credentials search', keys:['GITHUB_API_TOKEN'] },
+  { id:'p8',  num:'8',   label:'JS Analysis',        color:'#10b981', tools:['getjs','cariddi'],            cli:['getjs','cariddi'],   desc:'Secrets in JavaScript files', keys:[] },
+];
 
 // =====================================================================
-//  API helper
+//  Tool Catalog (Builder)
 // =====================================================================
-async function api(url, opts) {
-  try {
-    const r = await fetch(url, opts);
-    return await r.json();
-  } catch(e) {
-    console.error('API error:', e);
-    return {};
-  }
-}
+const TOOL_CATALOG = [
+  {id:'subfinder',   label:'subfinder',       cat:'Subdomain', color:'#0ea5e9', type:'go',     desc:'Passive subdomain discovery', outFile:'subdomains.txt'},
+  {id:'assetfinder', label:'assetfinder',     cat:'Subdomain', color:'#0ea5e9', type:'go',     desc:'Asset-based subdomain finder', outFile:'subdomains.txt'},
+  {id:'findomain',   label:'findomain',       cat:'Subdomain', color:'#0ea5e9', type:'go',     desc:'Fast subdomain discovery', outFile:'subdomains.txt'},
+  {id:'puredns',     label:'puredns',         cat:'DNS',       color:'#06b6d4', type:'go',     desc:'DNS brute-force & resolve', outFile:'resolved.txt'},
+  {id:'dnsgen',      label:'dnsgen',          cat:'DNS',       color:'#06b6d4', type:'go',     desc:'DNS permutation generator', inFile:'subdomains.txt', outFile:'dnsgen.txt'},
+  {id:'gotator',     label:'gotator',         cat:'DNS',       color:'#06b6d4', type:'go',     desc:'DNS permutation engine', inFile:'subdomains.txt', outFile:'gotator.txt'},
+  {id:'ripgen',      label:'ripgen',          cat:'DNS',       color:'#06b6d4', type:'go',     desc:'Subdomain permutations', inFile:'subdomains.txt', outFile:'ripgen.txt'},
+  {id:'asnmap',      label:'asnmap',          cat:'OSINT',     color:'#10b981', type:'go',     desc:'ASN IP range expansion', outFile:'asn-ips.txt'},
+  {id:'httpx',       label:'httpx',           cat:'Probe',     color:'#f59e0b', type:'go',     desc:'HTTP probe & fingerprint', inFile:'subdomains.txt', outFile:'hosts-alive.txt'},
+  {id:'naabu',       label:'naabu',           cat:'Ports',     color:'#ec4899', type:'go',     desc:'Port & service scanner', inFile:'hosts-alive.txt', outFile:'ports.txt'},
+  {id:'subzy',       label:'subzy',           cat:'Takeover',  color:'#ef4444', type:'go',     desc:'Subdomain takeover check', inFile:'subdomains.txt', outFile:'subzy.txt'},
+  {id:'gospider',    label:'gospider',        cat:'Crawl',     color:'#3b82f6', type:'go',     desc:'Web spider', inFile:'hosts-alive.txt', outFile:'gospider-urls.txt'},
+  {id:'katana',      label:'katana',          cat:'Crawl',     color:'#3b82f6', type:'go',     desc:'Next-gen web crawler', inFile:'hosts-alive.txt', outFile:'urls.txt'},
+  {id:'gau',         label:'gau',             cat:'Crawl',     color:'#14b8a6', type:'go',     desc:'Historical URLs (gau)', outFile:'gau-urls.txt'},
+  {id:'waybackurls', label:'waybackurls',     cat:'Crawl',     color:'#14b8a6', type:'go',     desc:'Wayback Machine URLs', outFile:'wayback-urls.txt'},
+  {id:'gf-xss',      label:'gf (xss)',        cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: XSS', inFile:'urls.txt', outFile:'gf-xss.txt'},
+  {id:'gf-sqli',     label:'gf (sqli)',       cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: SQLi', inFile:'urls.txt', outFile:'gf-sqli.txt'},
+  {id:'gf-ssrf',     label:'gf (ssrf)',       cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: SSRF', inFile:'urls.txt', outFile:'gf-ssrf.txt'},
+  {id:'gf-redirect', label:'gf (redirect)',   cat:'Patterns',  color:'#f59e0b', type:'go',     desc:'GF pattern: Redirect', inFile:'urls.txt', outFile:'gf-redirect.txt'},
+  {id:'nuclei',      label:'nuclei',          cat:'Scanner',   color:'#ef4444', type:'go',     desc:'Template-based vuln scanner', inFile:'hosts-alive.txt', outFile:'nuclei.txt'},
+  {id:'getjs',       label:'getJS',           cat:'JS',        color:'#10b981', type:'go',     desc:'Extract JS files', inFile:'hosts-alive.txt', outFile:'js-files.txt'},
+  {id:'cariddi',     label:'cariddi',         cat:'JS',        color:'#10b981', type:'go',     desc:'JS secrets & endpoints', inFile:'hosts-alive.txt', outFile:'cariddi.txt'},
+  {id:'py-cloud',    label:'Cloud Recon',     cat:'Cloud',     color:'#7c3aed', type:'python', desc:'S3/Azure/GCP buckets', outFile:'cloud.csv'},
+  {id:'py-takeover', label:'Takeover Check',  cat:'Takeover',  color:'#ef4444', type:'python', desc:'Subdomain takeover (Python)', inFile:'subdomains.txt', outFile:'takeover.csv'},
+  {id:'py-headers',  label:'Headers Audit',   cat:'Audit',     color:'#f97316', type:'python', desc:'CORS & security headers', inFile:'hosts-alive.txt', outFile:'headers.csv'},
+  {id:'py-favicon',  label:'Favicon Hash',    cat:'Audit',     color:'#8b5cf6', type:'python', desc:'MurmurHash3 fingerprint', inFile:'hosts-alive.txt', outFile:'favicon.csv'},
+  {id:'py-params',   label:'Param Discovery', cat:'Params',    color:'#06b6d4', type:'python', desc:'Hidden parameter discovery', inFile:'hosts-alive.txt', outFile:'params.csv'},
+  {id:'py-github',   label:'GitHub Dork',     cat:'OSINT',     color:'#a855f7', type:'python', desc:'Secrets & credentials search', outFile:'github-dorks.csv'},
+  {id:'py-asn',      label:'ASN Recon',       cat:'OSINT',     color:'#10b981', type:'python', desc:'IP range & ASN enum', outFile:'asn.csv'},
+  {id:'py-aivuln',  label:'AI Vuln Scan',       cat:'AI Scanner', color:'#ff6b35', type:'python', desc:'AI-assisted scanning: nuclei + gf patterns + smart scoring', inFile:'hosts-alive.txt', outFile:'ai-scan.csv'},
+  {id:'py-osint',   label:'OSINT Engine',       cat:'OSINT',      color:'#06b6d4', type:'python', desc:'Email harvest, tech detect, breach check', outFile:'osint-report.json'},
+  {id:'py-triage',  label:'AI Triage',          cat:'AI Scanner', color:'#ff6b35', type:'python', desc:'AI finding prioritization & attack chains', outFile:'triage-report.json'},
+];
 
-// =====================================================================
-//  Dashboard
-// =====================================================================
-async function loadDashboard() {
-  const data = await api('/api/jobs');
-  const jobs = data.jobs || [];
-  const running = jobs.filter(j => j.status === 'running').length;
-  const completed = jobs.filter(j => j.status === 'completed').length;
-  const failed = jobs.filter(j => j.status === 'failed').length;
+// Tool status cache
+let toolStatus = {};
+let configData = {};
+let activeJobId = null;
+let consoleSource = null;
+let currentResultDir = null;
 
-  document.getElementById('mTotal').textContent = jobs.length;
-  document.getElementById('mRunning').textContent = running;
-  document.getElementById('mCompleted').textContent = completed;
-  document.getElementById('mFailed').textContent = failed;
-  document.getElementById('activeCount').textContent = running + ' active';
-
-  const tbody = document.querySelector('#dashJobsTable tbody');
-  tbody.innerHTML = jobs.slice(0, 10).map(j => `
-    <tr>
-      <td><code>${j.id}</code></td>
-      <td class="truncate">${esc(j.domain)}</td>
-      <td class="text-muted text-xs">${esc(j.scan_type)}</td>
-      <td><span class="pill pill-${j.status}">${j.status}</span></td>
-      <td class="text-muted text-xs">${timeAgo(j.created_at)}</td>
-      <td>
-        <a href="#" onclick="openLive('${j.id}');return false;" class="btn-ghost">Logs</a>
-        ${j.result_dir ? `<a href="#" onclick="viewResultDir('${esc(j.result_dir)}');return false;" class="btn-ghost">Results</a>` : ''}
-      </td>
-    </tr>
-  `).join('') || '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:1.5rem;">No scans yet. Start one from the New Scan tab.</td></tr>';
-
-  // Results count
-  const rData = await api('/api/results');
-  const dirs = rData.dirs || [];
-  document.getElementById('mResults').textContent = dirs.length;
-
-  const rDiv = document.getElementById('dashResultsList');
-  if (dirs.length === 0) {
-    rDiv.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><p>No results yet. Run a scan to generate results.</p></div>';
-  } else {
-    rDiv.innerHTML = dirs.slice(0, 6).map(d => `
-      <div style="padding:0.5rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <span class="text-sm">${esc(d.name)}</span>
-          <span class="text-xs text-muted" style="margin-left:0.5rem;">${d.files.length} files</span>
-        </div>
-        <a href="#" onclick="viewResultDir('${esc(d.path)}');return false;" class="btn btn-secondary btn-sm">Explore</a>
-      </div>
-    `).join('');
-  }
-}
-
-// =====================================================================
-//  Live Terminal
-// =====================================================================
-function addTerminalNotice(msg) {
-  const box = document.getElementById('liveLog');
-  if (!box) return;
-  const div = document.createElement('div');
-  div.style.cssText = 'color:#f59e0b;background:#1a1400;border-left:3px solid #f59e0b;padding:0.4rem 0.75rem;margin:0.25rem 0;font-family:var(--font-mono);font-size:0.82rem;';
-  div.textContent = msg;
-  box.appendChild(div);
-  if (document.getElementById('liveAutoScroll').checked) box.scrollTop = box.scrollHeight;
-}
-
-// openLive(jobId, thenJobId?)
-// If thenJobId is set, automatically switch to that job's stream when this one completes
-function openLive(jobId, thenJobId) {
-  switchTab('live');
-  document.getElementById('liveNoJob').classList.add('hidden');
-  document.getElementById('livePanel').classList.remove('hidden');
-  document.getElementById('liveJobId').textContent = jobId;
-  const box = document.getElementById('liveLog');
-  box.innerHTML = '';
-  liveLineCount = 0;
-  currentJobId = jobId;
-
-  if (currentSSE) { currentSSE.close(); currentSSE = null; }
-
-  fetch(`/api/log?id=${jobId}&lines=2000`).then(r => r.json()).then(data => {
-    if (data.log) {
-      box.innerHTML = colorizeLog(data.log);
-      liveLineCount = data.log.split('\n').length;
-      updateLineCount();
-      if (document.getElementById('liveAutoScroll').checked) box.scrollTop = box.scrollHeight;
-    }
-    if (data.domain) document.getElementById('liveDomain').textContent = data.domain;
-    updateLiveStatus(data.status);
-
-    if (data.status === 'running' || data.status === 'queued') {
-      document.getElementById('btnStop').style.display = '';
-      currentSSE = new EventSource(`/api/stream?id=${jobId}`);
-      currentSSE.addEventListener('log', e => {
-        box.innerHTML += colorizeLog(e.data) + '\n';
-        liveLineCount++;
-        updateLineCount();
-        if (document.getElementById('liveAutoScroll').checked) box.scrollTop = box.scrollHeight;
-      });
-      currentSSE.addEventListener('status', e => {
-        try {
-          const s = JSON.parse(e.data);
-          updateLiveStatus(s.status);
-          if (s.status !== 'running' && s.status !== 'queued') {
-            document.getElementById('btnStop').style.display = 'none';
-            currentSSE.close(); currentSSE = null;
-            loadDashboard();
-            // Auto-switch to dependent scan job if one was queued
-            if (thenJobId && s.status === 'completed') {
-              addTerminalNotice('✓ Prerequisites installed. Switching to scan job…');
-              setTimeout(() => openLive(thenJobId), 1200);
-            }
-          }
-        } catch(ex) {}
-      });
-      currentSSE.onerror = () => { if (currentSSE) { currentSSE.close(); currentSSE = null; } };
-    } else {
-      document.getElementById('btnStop').style.display = 'none';
-    }
-  });
-}
-
-function updateLiveStatus(status) {
-  const el = document.getElementById('liveStatus');
-  el.className = 'pill pill-' + status;
-  el.textContent = status;
-}
-
-function updateLineCount() {
-  document.getElementById('liveLineCount').textContent = liveLineCount + ' lines';
-}
-
-function closeLivePanel() {
-  document.getElementById('livePanel').classList.add('hidden');
-  document.getElementById('liveNoJob').classList.remove('hidden');
-  if (currentSSE) { currentSSE.close(); currentSSE = null; }
-  currentJobId = null;
-}
-
-async function stopCurrentJob() {
-  if (!currentJobId) return;
-  if (!confirm('Stop this scan?')) return;
-  await api(`/api/scan/stop`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({job_id: currentJobId})
-  });
-  updateLiveStatus('failed');
-  document.getElementById('btnStop').style.display = 'none';
-  loadDashboard();
-}
-
-function colorizeLog(text) {
-  return text.split('\n').map(line => {
-    let l = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    // Strip ANSI escape codes but try to preserve semantics
-    const clean = l.replace(/\x1b\[[0-9;]*m/g, '');
-    if (/\[!]|error|failed|fatal|traceback/i.test(clean)) return `<span class="log-line-error">${clean}</span>`;
-    if (/warning|\[!\]|skipping|deprecated/i.test(clean)) return `<span class="log-line-warning">${clean}</span>`;
-    if (/\[✓]|\[v\]|completed|successfully|found \d+|saved \d+/i.test(clean)) return `<span class="log-line-success">${clean}</span>`;
-    if (/\[\+]|step \d+|running|starting|setting up|installing/i.test(clean)) return `<span class="log-line-step">${clean}</span>`;
-    if (/\[\*]|checking|scanning|querying|loading|resolving/i.test(clean)) return `<span class="log-line-info">${clean}</span>`;
-    return clean;
-  }).join('\n');
-}
-
-// =====================================================================
-//  Results Browser
-// =====================================================================
-async function loadResults() {
-  const data = await api('/api/results');
-  const dirs = data.dirs || [];
-  const container = document.getElementById('resultsBrowser');
-
-  if (dirs.length === 0) {
-    container.innerHTML = '<div class="card"><div class="empty-state"><div class="icon">[ ]</div><p>No result directories found. Run a scan to generate results.</p></div></div>';
-    return;
-  }
-
-  container.innerHTML = dirs.map(d => {
-    const fileRows = d.files.map(f => `
-      <li>
-        <a href="#" onclick="viewFile('${esc(f.path)}');return false;">${esc(f.name)}</a>
-        <span class="file-size">${formatSize(f.size)}</span>
-      </li>
-    `).join('');
-    const safeId = 'summary-' + d.path.replace(/[^a-zA-Z0-9]/g, '_');
-    return `
-      <div class="card">
-        <details>
-          <summary>
-            <span class="flex-center gap-1">${esc(d.name)} <span class="text-xs text-muted">${d.files.length} files</span></span>
-          </summary>
-          <div class="mt-1">
-            <div id="${safeId}" class="mb-1"></div>
-            <ul class="file-list">${fileRows || '<li class="text-muted">No supported files.</li>'}</ul>
-          </div>
-        </details>
-      </div>
-    `;
-  }).join('');
-
-  dirs.forEach(d => loadResultSummary(d.path));
-}
-
-async function loadResultSummary(dirPath) {
-  try {
-    const data = await api(`/api/summary?dir=${encodeURIComponent(dirPath)}`);
-    const s = data.summary;
-    if (!s) return;
-    const divId = 'summary-' + dirPath.replace(/[^a-zA-Z0-9]/g, '_');
-    const el = document.getElementById(divId);
-    if (!el) return;
-
-    let metrics = '';
-    if (s.subdomains > 0) metrics += metric(s.subdomains, 'Subdomains', 'info');
-    if (s.live_hosts > 0) metrics += metric(s.live_hosts, 'Live Hosts', 'success');
-    if (s.endpoints > 0) metrics += metric(s.endpoints, 'Endpoints', 'cyan');
-    if (s.ports > 0) metrics += metric(s.ports, 'Open Ports', 'purple');
-    if (s.emails > 0) metrics += metric(s.emails, 'Emails', 'warning');
-
-    const vulnEntries = Object.entries(s.vulnerabilities || {});
-    const totalVulns = vulnEntries.reduce((a, [,v]) => a + v, 0);
-    if (totalVulns > 0) metrics += metric(totalVulns, 'Vuln Patterns', 'error');
-    if (s.js_secrets > 0) metrics += metric(s.js_secrets, 'JS Secrets', 'error');
-
-    let html = '';
-    if (metrics) html += `<div class="grid-5" style="margin-bottom:0.75rem;">${metrics}</div>`;
-    if (vulnEntries.length > 0) {
-      html += `<div class="text-sm mb-05">${vulnEntries.map(([k,v]) =>
-        `<span class="pill severity-high" style="margin:0 0.2rem 0.2rem 0;">${k}: ${v}</span>`
-      ).join('')}</div>`;
-    }
-    if (s.has_report) {
-      html += `<div class="mt-05"><span class="pill severity-info">Report available</span></div>`;
-    }
-    el.innerHTML = html;
-  } catch(e) {}
-}
-
-function metric(value, label, color) {
-  return `<div class="metric ${color}"><div class="value">${value}</div><div class="label">${label}</div></div>`;
-}
-
-function viewResultDir(dirPath) {
-  switchTab('results');
-  setTimeout(() => {
-    const safeId = 'summary-' + dirPath.replace(/[^a-zA-Z0-9]/g, '_');
-    const el = document.getElementById(safeId);
-    if (el) {
-      const details = el.closest('details');
-      if (details) details.open = true;
-      el.scrollIntoView({behavior:'smooth', block:'center'});
-    }
-  }, 300);
-}
-
-// =====================================================================
-//  File Viewer Modal
-// =====================================================================
-async function viewFile(relPath) {
-  document.getElementById('fileModal').style.display = 'block';
-  document.getElementById('fileModalTitle').textContent = relPath;
-  const body = document.getElementById('fileModalBody');
-  body.innerHTML = '<div style="padding:2rem;text-align:center;" class="text-muted">Loading...</div>';
-
-  const ext = relPath.split('.').pop().toLowerCase();
-
-  if (ext === 'csv') {
-    const data = await api(`/api/file/csv?path=${encodeURIComponent(relPath)}`);
-    if (data.error) { body.innerHTML = `<div style="padding:1rem;" class="text-muted">${esc(data.error)}</div>`; return; }
-    const d = data.data;
-    body.innerHTML = `
-      <div style="padding:0.75rem;">
-        <p class="text-sm text-muted mb-1">${d.total} rows</p>
-        <div class="tbl-wrap" style="max-height:70vh;overflow-y:auto;">
-          <table>
-            <thead><tr>${d.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>
-            <tbody>${d.rows.slice(0, 500).map(r => `<tr>${r.map((c, i) => {
-              let cls = '';
-              const hdr = (d.headers[i] || '').toLowerCase();
-              if (hdr.includes('status')) {
-                const n = parseInt(c);
-                if (n >= 200 && n < 300) cls = 'http-2xx';
-                else if (n >= 300 && n < 400) cls = 'http-3xx';
-                else if (n >= 400 && n < 500) cls = 'http-4xx';
-                else if (n >= 500) cls = 'http-5xx';
-              }
-              return `<td class="${cls}">${esc(c)}</td>`;
-            }).join('')}</tr>`).join('')}</tbody>
-          </table>
-        </div>
-        ${d.total > 500 ? '<p class="text-xs text-muted mt-1">Showing first 500 of ' + d.total + ' rows.</p>' : ''}
-      </div>`;
-  } else if (ext === 'json') {
-    const data = await api(`/api/file/text?path=${encodeURIComponent(relPath)}`);
-    try {
-      const pretty = JSON.stringify(JSON.parse(data.text), null, 2);
-      body.innerHTML = `<pre class="log-box" style="max-height:none;border:none;border-radius:0;margin:0;">${esc(pretty)}</pre>`;
-    } catch(e) {
-      body.innerHTML = `<pre class="log-box" style="max-height:none;border:none;border-radius:0;margin:0;">${esc(data.text)}</pre>`;
-    }
-  } else if (ext === 'md') {
-    const data = await api(`/api/file/text?path=${encodeURIComponent(relPath)}`);
-    body.innerHTML = `<div style="padding:1.25rem;font-size:0.88rem;line-height:1.7;">${renderMarkdown(data.text)}</div>`;
-  } else {
-    const data = await api(`/api/file/text?path=${encodeURIComponent(relPath)}`);
-    body.innerHTML = `<pre class="log-box" style="max-height:none;border:none;border-radius:0;margin:0;">${colorizeLog(data.text || '')}</pre>`;
-  }
-}
-
-function closeFileModal() { document.getElementById('fileModal').style.display = 'none'; }
-document.getElementById('fileModal').addEventListener('click', e => { if (e.target.id === 'fileModal') closeFileModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFileModal(); });
-
-// =====================================================================
-//  History
-// =====================================================================
-async function refreshHistory() {
-  const data = await api('/api/jobs');
-  const jobs = data.jobs || [];
-  const tbody = document.querySelector('#historyTable tbody');
-  tbody.innerHTML = jobs.map(j => {
-    let dur = '--';
-    if (j.started_at && j.ended_at) {
-      const s = (new Date(j.ended_at) - new Date(j.started_at)) / 1000;
-      dur = s < 60 ? `${s.toFixed(0)}s` : s < 3600 ? `${(s/60).toFixed(1)}m` : `${(s/3600).toFixed(1)}h`;
-    } else if (j.started_at && j.status === 'running') {
-      const s = (Date.now() - new Date(j.started_at)) / 1000;
-      dur = `${(s/60).toFixed(0)}m (running)`;
-    }
-    return `<tr>
-      <td><code>${j.id}</code></td>
-      <td class="truncate">${esc(j.domain)}</td>
-      <td class="text-muted text-xs">${esc(j.scan_type)}</td>
-      <td><span class="pill pill-${j.status}">${j.status}</span></td>
-      <td class="text-muted text-xs">${formatDate(j.created_at)}</td>
-      <td class="text-xs">${dur}</td>
-      <td class="text-xs" style="font-family:var(--font-mono);">${j.return_code !== null && j.return_code !== undefined ? j.return_code : '--'}</td>
-      <td>
-        <a href="#" onclick="openLive('${j.id}');return false;" class="btn-ghost">Logs</a>
-        ${j.result_dir ? ` <a href="#" onclick="viewResultDir('${esc(j.result_dir)}');return false;" class="btn-ghost">Results</a>` : ''}
-      </td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:1.5rem;">No scans in history.</td></tr>';
-}
-
-// =====================================================================
-//  Scan Forms
-// =====================================================================
-document.getElementById('formPlaybook').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const domain = fd.get('domain').trim();
-  if (!domain) return;
-  const res = await api('/api/scan/playbook', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      domain: domain,
-      playbook: fd.get('playbook'),
-      threads: parseInt(fd.get('threads')) || 100,
-    })
-  });
-  if (res.error) { alert(res.error); return; }
-  if (res.install_job_id) {
-    // Show install first; scan job auto-starts after install succeeds
-    switchTab('live');
-    openLive(res.install_job_id, res.job_id);
-    addTerminalNotice(`⚙ Missing tools detected: ${(res.missing_tools||[]).join(', ')}. Running install script first — scan will start automatically when done.`);
-  } else if (res.job_id) {
-    switchTab('live');
-    openLive(res.job_id);
-  }
-  loadDashboard();
-});
-
-document.getElementById('formModule').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const domain = fd.get('domain').trim();
-  if (!domain) return;
-  const modules = fd.getAll('modules');
-  if (modules.length === 0) { alert('Select at least one module.'); return; }
-
-  for (const mod of modules) {
-    const res = await api('/api/scan/module', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        module: mod,
-        domain: domain,
-        timeout: parseInt(fd.get('timeout')) || 10,
-        concurrency: parseInt(fd.get('concurrency')) || 50,
-      })
-    });
-    if (res.job_id && modules.indexOf(mod) === 0) {
-      openLive(res.job_id);
-    }
-  }
-  loadDashboard();
-});
-
-// =====================================================================
-//  LLM
-// =====================================================================
-document.getElementById('formLLM').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const prompt = fd.get('prompt');
-  if (!prompt.trim()) return;
-
-  const chat = document.getElementById('chatMessages');
-  chat.innerHTML += `<div class="chat-msg user"><div class="role">You</div>${esc(prompt)}</div>`;
-  chat.scrollTop = chat.scrollHeight;
-  chat.innerHTML += `<div class="chat-msg assistant" id="llmPending"><div class="role">Assistant</div><span class="text-muted">Thinking...</span></div>`;
-
-  try {
-    const res = await api('/api/llm', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        prompt: prompt,
-        provider: fd.get('provider'),
-        model: fd.get('model'),
-        api_key: fd.get('api_key'),
-      })
-    });
-    const pending = document.getElementById('llmPending');
-    if (pending) {
-      pending.removeAttribute('id');
-      const content = res.response || res.error || 'No response received.';
-      pending.innerHTML = `<div class="role">Assistant</div>${renderMarkdown(content)}`;
-    }
-  } catch(err) {
-    const pending = document.getElementById('llmPending');
-    if (pending) {
-      pending.removeAttribute('id');
-      pending.innerHTML = `<div class="role">Assistant</div><span class="log-line-error">Error: ${esc(err.message)}</span>`;
-    }
-  }
-  chat.scrollTop = chat.scrollHeight;
-  e.target.querySelector('[name="prompt"]').value = '';
-});
+// Builder state
+let builderNodes = [];
+let builderDragSrc = null;
+let builderDragNode = null;
 
 // =====================================================================
 //  Utilities
 // =====================================================================
-function esc(s) { if (s == null) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
-
-function formatDate(iso) {
-  if (!iso) return '--';
-  try { return new Date(iso).toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}); } catch(e) { return iso; }
+function toast(msg, type='info'){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=type; t.style.display='block';
+  setTimeout(()=>t.style.display='none',3000);
+}
+function fmtDuration(start,end){
+  if(!start) return '—';
+  const s=new Date(start), e=end?new Date(end):new Date();
+  const d=Math.floor((e-s)/1000);
+  if(d<60) return d+'s';
+  if(d<3600) return Math.floor(d/60)+'m '+d%60+'s';
+  return Math.floor(d/3600)+'h '+Math.floor((d%3600)/60)+'m';
+}
+function fmtTime(iso){
+  if(!iso) return '—';
+  return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+function classifyLine(l){
+  if(/\[✓\]|\[OK\]|completed|success/i.test(l)) return 'success';
+  if(/\[!\]|error|ERROR|failed|FAIL/i.test(l)) return 'error';
+  if(/warning|WARN|\[\?\]/i.test(l)) return 'warn';
+  if(/\[\+\]|Phase|Step|Running/i.test(l)) return 'phase';
+  if(/\[\*\]|INFO/i.test(l)) return 'info';
+  return 'plain';
 }
 
-function timeAgo(iso) {
-  if (!iso) return '--';
+// =====================================================================
+//  Tab switching
+// =====================================================================
+function switchTab(name){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    if(b.textContent.toLowerCase().includes(name.substring(0,4))) b.classList.add('active');
+  });
+  if(name==='results') loadResults();
+  if(name==='history') refreshHistory();
+  if(name==='console') refreshConsoleJobList();
+  if(name==='builder') renderToolbox();
+}
+
+// =====================================================================
+//  Config panel
+// =====================================================================
+function toggleConfig(){
+  const p=document.getElementById('config-panel');
+  p.classList.toggle('open');
+  if(p.classList.contains('open') && Object.keys(configData).length===0) loadConfig();
+}
+async function loadConfig(){
+  const r=await fetch('/api/config/get');
+  configData=await r.json();
+  renderConfigPanel();
+}
+function renderConfigPanel(){
+  const p=document.getElementById('config-panel');
+  // Remove old fields (keep save row)
+  p.querySelectorAll('.cfg-field').forEach(el=>el.remove());
+  const saveRow=p.querySelector('.cfg-save-row');
+  const fields=[
+    {k:'CHAOS_API_KEY',label:'Chaos API Key'},
+    {k:'GITHUB_API_TOKEN',label:'GitHub Token'},
+    {k:'GITLAB_API_TOKEN',label:'GitLab Token'},
+    {k:'SHODAN_API_KEY',label:'Shodan API Key'},
+    {k:'HIBP_API_KEY',label:'HIBP API Key'},
+    {k:'HUNTER_API_KEY',label:'Hunter.io API Key'},
+    {k:'SLACK_WEBHOOK_URL',label:'Slack Webhook'},
+    {k:'DISCORD_WEBHOOK_URL',label:'Discord Webhook'},
+    {k:'THREADS',label:'Default Threads'},
+    {k:'MONITOR_INTERVAL',label:'Monitor Interval (min)'},
+  ];
+  fields.forEach(({k,label})=>{
+    const d=document.createElement('div'); d.className='cfg-field';
+    d.innerHTML=`<label>${label}</label><input data-key="${k}" type="${k.includes('KEY')||k.includes('TOKEN')||k.includes('WEBHOOK')?'password':'text'}" value="${configData[k]||''}" placeholder="${k}">`;
+    p.insertBefore(d,saveRow);
+  });
+}
+async function saveConfig(){
+  const inputs=document.getElementById('config-panel').querySelectorAll('input[data-key]');
+  const data={};
+  inputs.forEach(i=>data[i.dataset.key]=i.value);
+  const r=await fetch('/api/config/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const d=await r.json();
+  if(d.saved) toast('Config saved ✓','ok');
+  else toast('Save failed','err');
+  configData=Object.assign(configData,data);
+}
+
+// =====================================================================
+//  Prerequisites check
+// =====================================================================
+async function checkPrerequisites(){
+  const r=await fetch('/api/prerequisites');
+  const d=await r.json();
+  toolStatus=d.cli_tools||{};
+  renderFlow();
+}
+
+// =====================================================================
+//  Tool guidance hints (flags + tips shown in pipeline & builder)
+// =====================================================================
+const TOOL_GUIDANCE = {
+  'subfinder':   {flags: '-d domain -o out.txt -all -silent', tip: 'Use -all for all sources. Add -rl 10 to rate-limit.'},
+  'assetfinder': {flags: '--subs-only domain', tip: 'Fast passive enum. No API keys required.'},
+  'httpx':       {flags: '-l hosts.txt -sc -title -td -o alive.txt', tip: '-sc=status code, -td=tech detect, -fr=follow redirects'},
+  'naabu':       {flags: '-list hosts.txt -p 80,443,8080,8443 -o ports.txt', tip: 'Use -top-ports 1000 for comprehensive scan. Needs root for SYN scan.'},
+  'nuclei':      {flags: '-l hosts.txt -t cves/ -s critical,high -o findings.txt', tip: 'Use -tags cve,rce,sqli for targeted scan. -rl 10 for rate limiting.'},
+  'gospider':    {flags: '-S hosts.txt -c 10 -d 3 -o crawl/', tip: '-c=concurrency, -d=depth, --blacklist jpg,png,gif'},
+  'katana':      {flags: '-list hosts.txt -d 3 -jc -o urls.txt', tip: '-jc=JS crawling. Add -kf all for all headers.'},
+  'gau':         {flags: 'domain --o urls.txt --threads 10', tip: 'Fetches URLs from Wayback, OTX, CommonCrawl. Use --blacklist jpg,png'},
+  'gf':          {flags: '-list urls.txt | gf xss > xss.txt', tip: 'Patterns: xss, sqli, ssrf, redirect, lfi, rce, idor, cors, debug'},
+  'puredns':     {flags: 'bruteforce wordlist.txt domain -r resolvers.txt', tip: 'Needs a resolvers.txt. Uses massdns under the hood for speed.'},
+  'subzy':       {flags: 'run --targets subs.txt --hide-fails', tip: 'Checks CNAME records against 50+ vulnerable service fingerprints.'},
+  'waybackurls': {flags: 'domain | tee wayback.txt', tip: 'Pipe to httpx for live URL check. Filter with grep "api|admin|login"'},
+  'getjs':       {flags: '--input hosts.txt --output js.txt --complete', tip: 'Use --complete for absolute URLs. Then run secretfinder on output.'},
+  'asnmap':      {flags: '-d domain -o asn.txt', tip: 'Maps domain to ASN then expands to all IPs in that ASN range.'},
+};
+
+// =====================================================================
+//  Flow pipeline rendering
+// =====================================================================
+function renderFlow(){
+  const canvas=document.getElementById('flow-canvas');
+  // Remove old nodes/arrows (keep SVG)
+  canvas.querySelectorAll('.phase-node,.phase-arrow').forEach(el=>el.remove());
+  const svg=document.getElementById('flow-svg');
+
+  PHASES.forEach((phase,i)=>{
+    // Arrow before (except first)
+    if(i>0){
+      const arr=document.createElement('div');
+      arr.className='phase-arrow'; arr.textContent='→';
+      canvas.appendChild(arr);
+    }
+    const node=document.createElement('div');
+    node.className='phase-node'; node.id='node-'+phase.id;
+    node.style.borderTopColor=phase.color;
+    node.style.borderTopWidth='3px';
+
+    // Tool rows
+    const toolsHtml=phase.tools.map(t=>{
+      const isPy=t.startsWith('(Py)');
+      const toolName=isPy?t:t;
+      const dotClass=isPy?'python':(toolStatus[t]?'ok':'missing');
+      const installBtn=(!isPy&&!toolStatus[t])?`<button class="btn-install" onclick="installTool('${t}',event)">↓</button>`:'';
+      const g=TOOL_GUIDANCE[t];
+      const hint=g?`<span class="tool-hint" title="Flags: ${g.flags}&#10;Tip: ${g.tip}">&#x2139;</span>`:'';
+      return `<div class="tool-row"><span class="tool-dot ${dotClass}"></span><span class="tool-name">${toolName}</span>${hint}${installBtn}</div>`;
+    }).join('');
+
+    // API key fields
+    let keysHtml='';
+    if(phase.keys.length>0){
+      const keyFields=phase.keys.map(k=>`<div class="key-field"><label>${k}</label><input data-cfgkey="${k}" type="password" value="${configData[k]||''}" placeholder="${k}" onchange="configData['${k}']=this.value"></div>`).join('');
+      keysHtml=`<div class="node-keys-toggle" onclick="toggleNodeKeys('${phase.id}')">🔑 API Keys ▾</div><div class="node-keys" id="nodekeys-${phase.id}">${keyFields}</div>`;
+    }
+
+    node.innerHTML=`
+      <div class="node-header" style="background:${phase.color}18">
+        <span class="phase-badge" style="background:${phase.color}33;color:${phase.color}">P${phase.num}</span>
+        <span class="node-title" title="${phase.label}">${phase.label}</span>
+      </div>
+      <div class="node-desc">${phase.desc}</div>
+      <div class="node-tools">${toolsHtml}</div>
+      ${keysHtml}
+    `;
+    canvas.appendChild(node);
+  });
+}
+
+function toggleNodeKeys(phaseId){
+  document.getElementById('nodekeys-'+phaseId).classList.toggle('open');
+}
+
+// =====================================================================
+//  Tool install — permission-aware flow
+// =====================================================================
+async function installTool(toolId, evt) {
+  evt && evt.stopPropagation();
+  // Step 1: fetch install info without running anything
+  let info;
   try {
-    const diff = (Date.now() - new Date(iso)) / 1000;
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
-    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
-    return Math.floor(diff/86400) + 'd ago';
-  } catch(e) { return iso; }
+    info = await fetch('/api/tool/install', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tool: toolId, check_only: true})
+    }).then(r => r.json());
+  } catch(e) {
+    toast('Failed to reach server: ' + e.message, 'err');
+    return;
+  }
+  if (info.error) { toast(info.error, 'err'); return; }
+  // Step 2: show permission dialog before executing
+  showInstallModal(toolId, info);
 }
 
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
-  return (bytes/1048576).toFixed(1) + ' MB';
+function showInstallModal(toolId, info) {
+  // Remove any existing modal
+  document.getElementById('install-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'install-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:#000a;z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:24px;max-width:500px;width:90%;font-family:var(--font)">
+      <div style="font-size:14px;font-weight:700;color:var(--cyan);margin-bottom:12px">Install ${info.label || toolId}</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Method: <span style="color:var(--text)">${info.method || 'go install'}</span></div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Command:</div>
+      <pre style="background:var(--terminal);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:11px;color:var(--green);margin-bottom:12px;white-space:pre-wrap">${info.install_cmd || ''}</pre>
+      <div style="font-size:10px;color:var(--yellow);margin-bottom:16px">&#9888; This will execute with your current user permissions. Go tools install to ~/go/bin.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('install-modal').remove()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="doInstall('${toolId}')">Confirm &amp; Install</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 }
 
-function renderMarkdown(text) {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm, '<h4 style="color:var(--accent);margin:0.75rem 0 0.3rem;font-size:0.92rem;">$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3 style="color:var(--text);margin:1rem 0 0.3rem;font-size:1rem;">$1</h3>')
-    .replace(/^# (.+)$/gm, '<h2 style="color:var(--text);margin:1.25rem 0 0.5rem;font-size:1.1rem;">$1</h2>')
-    .replace(/^- (.+)$/gm, '<div style="padding:0.15rem 0 0.15rem 1rem;">&#8226; $1</div>')
-    .replace(/^(\d+)\. (.+)$/gm, '<div style="padding:0.15rem 0 0.15rem 1rem;">$1. $2</div>')
-    .replace(/```([\s\S]*?)```/gm, '<pre class="log-box" style="margin:0.5rem 0;font-size:0.78rem;">$1</pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/\n\n/g, '<br><br>')
-    .replace(/\n/g, '<br>');
+async function doInstall(toolId) {
+  document.getElementById('install-modal')?.remove();
+  toast(`Installing ${toolId}...`, 'info');
+  let d;
+  try {
+    const r = await fetch('/api/tool/install', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tool: toolId, check_only: false})
+    });
+    d = await r.json();
+  } catch(e) {
+    toast('Install request failed: ' + e.message, 'err');
+    return;
+  }
+  if (d.job_id) {
+    switchTab('console');
+    refreshConsoleJobList(d.job_id);
+    streamJob(d.job_id);
+    watchJob(d.job_id, toolId, () => {
+      checkPrerequisites();
+      renderFlow();
+      if (typeof renderToolbox === 'function') renderToolbox();
+      toast(`${toolId} installed ✓`, 'ok');
+    });
+  } else {
+    toast(d.error || 'Install failed', 'err');
+  }
 }
-
-// Clock
-function updateClock() {
-  document.getElementById('headerClock').textContent = new Date().toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
-}
-updateClock();
-setInterval(updateClock, 30000);
 
 // =====================================================================
-//  Init & polling
+//  Launch scan
 // =====================================================================
-loadDashboard();
-refreshHistory();
-loadResults();
-setInterval(loadDashboard, 12000);
-setInterval(() => {
-  const histTab = document.getElementById('tab-history');
-  if (histTab && histTab.classList.contains('active')) refreshHistory();
-}, 10000);
+async function launchPipeline(){
+  const domain=document.getElementById('domainInput').value.trim();
+  const threads=document.getElementById('threadsInput').value||'100';
+  if(!domain){toast('Enter a target domain','err');return;}
+  // Save any config changes first
+  if(Object.keys(configData).length>0) await saveConfig();
+  const r=await fetch('/api/scan/playbook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,playbook:'v1',threads:parseInt(threads)})});
+  const d=await r.json();
+  if(d.error){toast(d.error,'err');return;}
+  activeJobId=d.job_id;
+  toast(`Scan started: job ${d.job_id}`,'ok');
+  document.getElementById('hdr-status').textContent=`● Scanning ${domain}`;
+  document.getElementById('scan-status').textContent=`Job: ${d.job_id}`;
+  if(d.install_job_id) toast(`Installing prerequisites first (job ${d.install_job_id})`,'info');
+  // Auto-switch to console
+  switchTab('console');
+  refreshConsoleJobList(d.job_id);
+  streamJob(d.job_id);
+}
+
+async function stopScan(){
+  if(!activeJobId){toast('No active scan','err');return;}
+  const r=await fetch('/api/scan/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:activeJobId})});
+  const d=await r.json();
+  toast(d.stopped?'Scan stopped':'Could not stop',d.stopped?'ok':'err');
+  if(d.stopped){activeJobId=null;document.getElementById('hdr-status').textContent='● No active scan';}
+}
+
+// =====================================================================
+//  Bug Bounty Mode
+// =====================================================================
+let bugBountyMode = false;
+function toggleBBMode(on) {
+  bugBountyMode = on;
+  document.getElementById('bb-scope-row').style.display = on ? 'flex' : 'none';
+  if (on) toast('Bug Bounty Mode enabled — scope filtering active', 'info');
+}
+
+// =====================================================================
+//  Console
+// =====================================================================
+function clearConsole(){document.getElementById('console-body').innerHTML='';}
+function appendLine(text){
+  const body=document.getElementById('console-body');
+  const div=document.createElement('div');
+  div.className='line '+classifyLine(text);
+  div.textContent=text;
+  body.appendChild(div);
+  if(document.getElementById('autoScroll').checked) body.scrollTop=body.scrollHeight;
+  // Detect interactive prompts
+  const PROMPT_RE = /\[y\/n\]|\[Y\/N\]|\[yes\/no\]|\(y\/n\)|\(Y\/N\)|password:|Password:|Enter |press enter|continue\?|\? $/i;
+  if(PROMPT_RE.test(text) && activeJobId){
+    showStdinRow(text.trim().substring(0,80));
+  }
+}
+
+// =====================================================================
+//  Console stdin
+// =====================================================================
+function showStdinRow(promptText){
+  const row=document.getElementById('stdin-row');
+  const lbl=document.getElementById('stdin-prompt-label');
+  lbl.textContent=promptText||'⚡ Input required';
+  row.classList.add('visible');
+  document.getElementById('stdin-input').focus();
+}
+function hideStdinRow(){
+  document.getElementById('stdin-row').classList.remove('visible');
+  document.getElementById('stdin-input').value='';
+}
+async function sendStdin(){
+  const inp=document.getElementById('stdin-input');
+  const text=inp.value;
+  if(!activeJobId){toast('No active job','err');return;}
+  inp.value='';
+  hideStdinRow();
+  appendLine('> '+text);
+  try{
+    await fetch('/api/scan/stdin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:activeJobId,text})});
+  }catch(e){toast('stdin send failed','err');}
+}
+function sendStdinText(text){
+  document.getElementById('stdin-input').value=text;
+  sendStdin();
+}
+
+async function refreshConsoleJobList(selectId=null){
+  const r=await fetch('/api/jobs');
+  const d=await r.json();
+  const sel=document.getElementById('console-job-select');
+  sel.innerHTML='<option value="">— Select job —</option>';
+  (d.jobs||[]).slice(0,20).forEach(j=>{
+    const opt=document.createElement('option');
+    opt.value=j.id;
+    opt.textContent=`${j.id} | ${j.domain} | ${j.scan_type} | ${j.status}`;
+    sel.appendChild(opt);
+  });
+  if(selectId){sel.value=selectId;}
+}
+
+async function loadConsoleJob(jobId){
+  if(!jobId) return;
+  clearConsole();
+  // Load existing log
+  const r=await fetch(`/api/log?id=${jobId}&lines=500`);
+  const d=await r.json();
+  if(d.log){
+    d.log.split('\n').forEach(l=>appendLine(l));
+  }
+  // Setup label
+  document.getElementById('console-label').textContent=`Job: ${jobId} | Domain: ${d.domain||'?'} | ${d.status||'?'}`;
+  // Start streaming if job is running
+  if(d.status==='running'||d.status==='queued') streamJob(jobId);
+}
+
+function streamJob(jobId){
+  if(consoleSource){consoleSource.close();}
+  consoleSource=new EventSource(`/api/stream?id=${jobId}`);
+  consoleSource.addEventListener('log',e=>appendLine(e.data));
+  consoleSource.addEventListener('status',e=>{
+    try{
+      const s=JSON.parse(e.data);
+      const status=s.status||'?';
+      if(status==='running'){
+        showStdinRow('⚡ Input required');
+        hideStdinRow(); // show the row but keep it hidden until prompt detected
+      }
+      if(status==='completed'){
+        appendLine('[REK] ✓ Scan completed.');
+        document.getElementById('hdr-status').textContent='● No active scan';
+        hideStdinRow();
+        checkPrerequisites(); // refresh tool status
+      } else if(status==='failed'){
+        appendLine('[REK] ✗ Scan failed.');
+        document.getElementById('hdr-status').textContent='● No active scan';
+        hideStdinRow();
+      }
+      if(['completed','failed'].includes(status)){
+        consoleSource.close();
+        refreshHistory();
+      }
+    }catch(err){}
+  });
+  consoleSource.onerror=()=>{consoleSource.close();};
+}
+
+function watchJob(jobId, label, onDone){
+  const poll=setInterval(async()=>{
+    const r=await fetch('/api/jobs');
+    const d=await r.json();
+    const job=(d.jobs||[]).find(j=>j.id===jobId);
+    if(!job) return;
+    if(['completed','failed'].includes(job.status)){
+      clearInterval(poll);
+      if(job.status==='completed') onDone();
+    }
+  },2000);
+}
+
+// =====================================================================
+//  Results explorer
+// =====================================================================
+async function loadResults(){
+  const r=await fetch('/api/results');
+  const d=await r.json();
+  const tree=document.getElementById('results-tree');
+  tree.innerHTML='<div id="wordlists-section" style="margin-top:8px;border-top:1px solid var(--border)"></div>';
+
+  // Populate result-dir-select for Intel tab
+  const sel=document.getElementById('result-dir-select');
+  const curVal=sel.value;
+  sel.innerHTML='<option value="">— Load results context —</option>';
+
+  (d.dirs||[]).forEach(dir=>{
+    const opt=document.createElement('option');
+    opt.value=dir.path; opt.textContent=dir.name;
+    sel.appendChild(opt);
+    if(dir.path===curVal) sel.value=curVal;
+
+    const header=document.createElement('div');
+    header.className='dir-header';
+    header.innerHTML=`<span style="color:var(--cyan)">▶</span>${dir.name}`;
+    let expanded=false;
+    const filesContainer=document.createElement('div');
+    filesContainer.style.display='none';
+    header.onclick=()=>{
+      expanded=!expanded;
+      filesContainer.style.display=expanded?'block':'none';
+      header.querySelector('span').textContent=expanded?'▼':'▶';
+    };
+    tree.appendChild(header);
+    tree.appendChild(filesContainer);
+
+    (dir.files||[]).forEach(f=>{
+      const item=document.createElement('div');
+      item.className='file-item';
+      item.innerHTML=`<span style="color:var(--text3)">∙</span>${f.name} <span style="color:var(--text3);font-size:10px">(${(f.size/1024).toFixed(1)}k)</span>`;
+      item.onclick=()=>{
+        document.querySelectorAll('.file-item').forEach(i=>i.classList.remove('active'));
+        item.classList.add('active');
+        previewFile(f);
+      };
+      filesContainer.appendChild(item);
+    });
+  });
+
+  // ── Wordlists section ──────────────────────────────────────────────
+  try {
+    const wr = await fetch('/api/wordlists');
+    const wd = await wr.json();
+    const wlSection = document.getElementById('wordlists-section');
+    if (wlSection && (wd.wordlists||[]).length > 0) {
+      const wlHeader = document.createElement('div');
+      wlHeader.className = 'dir-header';
+      wlHeader.style.cssText = 'color:var(--purple);margin-top:4px';
+      wlHeader.innerHTML = `<span style="color:var(--purple)">▶</span>&#128203; Wordlists`;
+      let wlExpanded = false;
+      const wlContainer = document.createElement('div');
+      wlContainer.style.display = 'none';
+      wlHeader.onclick = () => {
+        wlExpanded = !wlExpanded;
+        wlContainer.style.display = wlExpanded ? 'block' : 'none';
+        wlHeader.querySelector('span').textContent = wlExpanded ? '▼' : '▶';
+      };
+      wlSection.appendChild(wlHeader);
+      wlSection.appendChild(wlContainer);
+      (wd.wordlists||[]).forEach(wf => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `<span style="color:var(--purple)">∙</span>${wf.name} <span style="color:var(--text3);font-size:10px">(${(wf.size/1024).toFixed(1)}k)</span>`;
+        item.onclick = () => {
+          document.querySelectorAll('.file-item').forEach(i=>i.classList.remove('active'));
+          item.classList.add('active');
+          // Preview first 50 lines of wordlist
+          previewWordlist(wf);
+        };
+        wlContainer.appendChild(item);
+      });
+    }
+  } catch(e) { /* wordlists section is non-critical */ }
+}
+
+async function previewWordlist(wf) {
+  const preview = document.getElementById('results-preview');
+  try {
+    const r = await fetch(`/api/file/text?path=${encodeURIComponent(wf.path)}&limit=50`);
+    const d = await r.json();
+    const text = (d.text || '').split('\n').slice(0, 50).join('\n');
+    const totalLines = (d.text || '').split('\n').length;
+    preview.innerHTML = `<h4>&#128203; ${wf.name} <span style="color:var(--text2);font-size:11px">(wordlist — showing first 50 of ${totalLines} lines)</span></h4><pre style="color:var(--purple)">${text.replace(/</g,'&lt;')}</pre>`;
+  } catch(e) {
+    preview.innerHTML = `<h4>${wf.name}</h4><div style="color:var(--red)">Failed to load preview</div>`;
+  }
+}
+
+async function previewFile(f){
+  const preview=document.getElementById('results-preview');
+  if(f.ext==='.csv'){
+    const r=await fetch(`/api/file/csv?path=${encodeURIComponent(f.path)}`);
+    const d=await r.json();
+    if(d.data){
+      const {headers,rows,total}=d.data;
+      let html=`<h4>${f.name} <span style="color:var(--text2);font-size:11px">(${total} rows)</span></h4>`;
+      html+='<div style="overflow-x:auto"><table>';
+      html+='<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+      rows.slice(0,500).forEach(row=>{
+        html+='<tr>'+row.map(c=>`<td title="${c}">${c}</td>`).join('')+'</tr>';
+      });
+      html+='</table></div>';
+      preview.innerHTML=html;
+    }
+  } else {
+    const r=await fetch(`/api/file/text?path=${encodeURIComponent(f.path)}`);
+    const d=await r.json();
+    const text=d.text||'';
+    preview.innerHTML=`<h4>${f.name}</h4><pre>${text.replace(/</g,'&lt;')}</pre>`;
+  }
+}
+
+// =====================================================================
+//  Intelligence / LLM
+// =====================================================================
+document.getElementById('llm-provider').addEventListener('change', function(){
+  document.getElementById('llm-apikey-field').style.display=this.value==='remote'?'block':'none';
+  document.getElementById('llm-url-field').style.display='block';
+});
+
+async function testLLM(){
+  addChatMessage('user','Testing LLM connection...');
+  const spinner=addChatSpinner();
+  try{
+    const r=await callLLM('Say "REK LLM connected" and nothing else.',null);
+    spinner.remove();
+    addChatMessage('bot',r);
+  }catch(e){
+    spinner.remove();
+    addChatMessage('error','LLM test failed: '+e.message);
+  }
+}
+
+function addChatMessage(role,text){
+  const chat=document.getElementById('intel-chat');
+  const div=document.createElement('div');
+  div.className='chat-msg '+role;
+  div.textContent=text;
+  chat.appendChild(div);
+  chat.scrollTop=chat.scrollHeight;
+  return div;
+}
+function addChatSpinner(){
+  const chat=document.getElementById('intel-chat');
+  const div=document.createElement('div');
+  div.className='chat-spinner';
+  div.textContent='⟳ Thinking...';
+  chat.appendChild(div);
+  chat.scrollTop=chat.scrollHeight;
+  return div;
+}
+
+async function callLLM(prompt, resultDir, action=null){
+  const payload={
+    prompt, action,
+    provider:document.getElementById('llm-provider').value,
+    model:document.getElementById('llm-model').value||null,
+    api_key:document.getElementById('llm-apikey').value||null,
+    result_dir:resultDir||currentResultDir||null,
+  };
+  const r=await fetch('/api/llm/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json();
+  if(d.error) throw new Error(d.error);
+  return d.response;
+}
+
+async function loadResultContext(){
+  const sel=document.getElementById('result-dir-select');
+  const dir=sel.value;
+  if(!dir){toast('Select a result directory','err');return;}
+  currentResultDir=dir;
+  const r=await fetch(`/api/summary?dir=${encodeURIComponent(dir)}`);
+  const d=await r.json();
+  const s=d.summary||{};
+  const badge=document.getElementById('context-badge');
+  badge.style.display='inline';
+  badge.textContent=`${s.subdomains||0} subs · ${s.live_hosts||0} live · ${s.endpoints||0} endpoints · ${Object.values(s.vulnerabilities||{}).reduce((a,b)=>a+b,0)} vulns`;
+  toast('Results context loaded ✓','ok');
+}
+
+async function runAction(action){
+  if(!currentResultDir){toast('Load results context first','err');return;}
+  const spinner=addChatSpinner();
+  try{
+    const r=await callLLM(null,currentResultDir,action);
+    spinner.remove();
+    addChatMessage('bot',r);
+  }catch(e){
+    spinner.remove();
+    addChatMessage('error',e.message);
+  }
+}
+
+function handleIntelKey(evt){
+  if(evt.key==='Enter'&&!evt.shiftKey){evt.preventDefault();sendIntelPrompt();}
+}
+async function sendIntelPrompt(){
+  const ta=document.getElementById('intel-prompt');
+  const prompt=ta.value.trim();
+  if(!prompt) return;
+  ta.value='';
+  addChatMessage('user',prompt);
+  const spinner=addChatSpinner();
+  try{
+    const r=await callLLM(prompt,currentResultDir,null);
+    spinner.remove();
+    addChatMessage('bot',r);
+  }catch(e){
+    spinner.remove();
+    addChatMessage('error',e.message);
+  }
+}
+
+// =====================================================================
+//  History
+// =====================================================================
+async function refreshHistory(){
+  const r=await fetch('/api/jobs');
+  const d=await r.json();
+  const tbody=document.getElementById('history-tbody');
+  tbody.innerHTML='';
+  (d.jobs||[]).forEach(j=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td style="font-family:monospace;color:var(--cyan)">${j.id}</td>
+      <td>${j.domain}</td>
+      <td style="color:var(--text2)">${j.scan_type}</td>
+      <td><span class="badge ${j.status}">${j.status}</span></td>
+      <td style="color:var(--text2)">${fmtTime(j.started_at)}</td>
+      <td style="color:var(--text2)">${fmtDuration(j.started_at,j.ended_at)}</td>
+      <td><a class="lnk" onclick="viewJobLog('${j.id}')">Console</a></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function viewJobLog(jobId){
+  switchTab('console');
+  document.getElementById('console-job-select').value=jobId;
+  loadConsoleJob(jobId);
+}
+
+// =====================================================================
+//  Builder tab
+// =====================================================================
+function renderToolbox(){
+  const box=document.getElementById('builder-toolbox');
+  box.innerHTML='';
+  const cats={};
+  TOOL_CATALOG.forEach(t=>{
+    if(!cats[t.cat]) cats[t.cat]=[];
+    cats[t.cat].push(t);
+  });
+  Object.entries(cats).forEach(([cat,tools])=>{
+    const catEl=document.createElement('div');
+    catEl.className='tb-cat'; catEl.textContent=cat;
+    box.appendChild(catEl);
+    tools.forEach(t=>{
+      const isInstalled = t.type==='python' ? true : (toolStatus[t.id]||false);
+      const dotColor = t.type==='python' ? 'var(--purple)' : (isInstalled ? 'var(--green)' : 'var(--red)');
+      const el=document.createElement('div');
+      el.className='tb-tool'+(isInstalled||t.type==='python'?'':' unavail');
+      el.draggable=true;
+      el.innerHTML=`<span style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block"></span>${t.label}`;
+      const g=TOOL_GUIDANCE[t.id];
+      el.title=t.desc + (g ? ' | Common flags: ' + g.flags : ' | see docs');
+      el.addEventListener('dragstart',ev=>{
+        builderDragSrc=t.id; builderDragNode=null;
+        ev.dataTransfer.setData('text/plain',t.id);
+        ev.dataTransfer.effectAllowed='copy';
+      });
+      el.addEventListener('dragend',()=>{builderDragSrc=null;});
+      el.onclick=()=>addBuilderTool(t.id);
+      box.appendChild(el);
+    });
+  });
+}
+
+function addBuilderTool(toolId){
+  const def=TOOL_CATALOG.find(t=>t.id===toolId);
+  if(!def) return;
+  builderNodes.push({id:toolId, flags:'', _def:def});
+  renderBuilderCanvas();
+}
+
+function removeBuilderNode(idx){
+  builderNodes.splice(idx,1);
+  renderBuilderCanvas();
+}
+
+function clearBuilder(){
+  builderNodes=[];
+  renderBuilderCanvas();
+}
+
+const PIPELINE_TEMPLATES = {
+  full_recon:    ['subfinder','assetfinder','httpx','naabu','gospider','katana','gau','gf-xss','gf-sqli','gf-ssrf','nuclei','py-takeover','py-headers','py-triage'],
+  quick_surface: ['subfinder','httpx','naabu','katana','nuclei'],
+  takeover_hunt: ['subfinder','assetfinder','subzy','py-takeover'],
+  api_audit:     ['subfinder','httpx','gospider','katana','gf-ssrf','gf-idor','nuclei','py-params','py-headers'],
+  osint_deep:    ['py-osint','py-cloud','py-github','py-asn','asnmap','py-triage'],
+};
+
+function loadPipelineTemplate(name) {
+  if (!name) return;
+  const tools = PIPELINE_TEMPLATES[name];
+  if (!tools) return;
+  builderNodes = [];
+  tools.forEach(id => {
+    const def = TOOL_CATALOG.find(t => t.id === id);
+    if (def) builderNodes.push({id, flags: '', _def: def});
+  });
+  renderBuilderCanvas();
+  document.getElementById('pipeline-template').value = '';
+  toast('Template loaded: ' + name.replace(/_/g,' '), 'ok');
+}
+
+function renderBuilderCanvas(){
+  const canvas=document.getElementById('builder-canvas');
+  canvas.innerHTML='';
+  if(builderNodes.length===0){
+    const empty=document.createElement('div');
+    empty.id='builder-empty';
+    empty.innerHTML=`<div style="text-align:center;padding:40px 20px;max-width:500px">
+      <div style="font-size:24px;margin-bottom:12px">&#128296;</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Build Your Custom Pipeline</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+        Drag tools from the left panel or click them to add.<br>
+        Tools run in sequence &#8212; each step&#39;s output feeds the next.<br>
+        Add extra flags per-tool using the flags input on each node.
+      </div>
+      <div style="font-size:10px;color:var(--text3);line-height:1.8">
+        &#128161; <b style="color:var(--cyan)">Bug Bounty tip:</b> Start with subfinder &#8594; httpx &#8594; gospider &#8594; gf &#8594; nuclei<br>
+        &#128161; <b style="color:var(--cyan)">Takeover tip:</b> subfinder &#8594; subzy + Takeover Check<br>
+        &#128161; <b style="color:var(--cyan)">OSINT tip:</b> OSINT Engine &#8594; GitHub Dork &#8594; AI Triage
+      </div>
+    </div>`;
+    canvas.appendChild(empty);
+    return;
+  }
+  builderNodes.forEach((node,idx)=>{
+    if(idx>0){
+      const arrow=document.createElement('div');
+      arrow.style.cssText='width:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--border2);font-size:18px;user-select:none;padding-top:10px';
+      arrow.textContent='\u2192';
+      canvas.appendChild(arrow);
+    }
+    const def=node._def;
+    const isInstalled=def.type==='python'?true:(toolStatus[def.id]||false);
+    const dotColor=def.type==='python'?'var(--purple)':(isInstalled?'var(--green)':'var(--red)');
+    const bn=document.createElement('div');
+    bn.className='bn';
+    bn.draggable=true;
+    bn.dataset.idx=idx;
+    bn.style.borderTopColor=def.color;
+    bn.style.borderTopWidth='3px';
+    const inMeta=def.inFile?`in: ${def.inFile}`:'';
+    const outMeta=def.outFile?`out: ${def.outFile}`:'';
+    const warnHtml=(!isInstalled&&def.type!=='python')?`<div class="bn-warn">⚠ not installed</div>`:'';
+    bn.innerHTML=`
+      <div class="bn-header">
+        <span style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block"></span>
+        <span class="bn-title" title="${def.label}">${def.label}</span>
+        <button class="bn-rm" onclick="removeBuilderNode(${idx})" title="Remove">\u00d7</button>
+      </div>
+      <div class="bn-meta">${[inMeta,outMeta].filter(Boolean).join(' \u2192 ')}</div>
+      ${warnHtml}
+      <div class="bn-flags">
+        <div class="bn-flags-label">extra flags</div>
+        <input type="text" placeholder="--flag value" value="${node.flags}" oninput="builderNodes[${idx}].flags=this.value">
+      </div>`;
+    bn.addEventListener('dragstart',ev=>{
+      builderDragNode=idx; builderDragSrc=null;
+      ev.dataTransfer.setData('text/plain','node:'+idx);
+      ev.dataTransfer.effectAllowed='move';
+    });
+    bn.addEventListener('dragover',ev=>{ev.preventDefault();bn.classList.add('drag-over');});
+    bn.addEventListener('dragleave',()=>bn.classList.remove('drag-over'));
+    bn.addEventListener('drop',ev=>{
+      ev.preventDefault();
+      bn.classList.remove('drag-over');
+      onCanvasDrop(ev,idx);
+    });
+    canvas.appendChild(bn);
+  });
+}
+
+function onCanvasDrop(e, targetIdx){
+  e.preventDefault();
+  const data=e.dataTransfer.getData('text/plain');
+  if(data.startsWith('node:')){
+    // Reorder
+    const fromIdx=parseInt(data.replace('node:',''));
+    if(isNaN(fromIdx)||fromIdx===targetIdx) return;
+    const moved=builderNodes.splice(fromIdx,1)[0];
+    const insertAt=(targetIdx===undefined)?builderNodes.length:targetIdx;
+    builderNodes.splice(insertAt,0,moved);
+    renderBuilderCanvas();
+  } else {
+    // New tool from toolbox
+    const toolId=data;
+    if(toolId) addBuilderTool(toolId);
+  }
+}
+
+async function runBuilderPipeline(){
+  const domain=document.getElementById('builder-domain').value.trim();
+  if(!domain){toast('Enter a target domain','err');return;}
+  if(builderNodes.length===0){toast('Add at least one tool','err');return;}
+  const tools=builderNodes.map(n=>({id:n.id,flags:n.flags}));
+  const r=await fetch('/api/scan/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,tools,preview_only:false})});
+  const d=await r.json();
+  if(d.error){toast(d.error,'err');return;}
+  activeJobId=d.job_id;
+  toast('Pipeline started: job '+d.job_id,'ok');
+  document.getElementById('hdr-status').textContent='\u25cf Scanning '+domain;
+  switchTab('console');
+  refreshConsoleJobList(d.job_id);
+  streamJob(d.job_id);
+}
+
+async function previewBuilderScript(){
+  const domain=document.getElementById('builder-domain').value.trim()||'example.com';
+  if(builderNodes.length===0){toast('Add at least one tool','err');return;}
+  const tools=builderNodes.map(n=>({id:n.id,flags:n.flags}));
+  const r=await fetch('/api/scan/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,tools,preview_only:true})});
+  const d=await r.json();
+  if(d.error){toast(d.error,'err');return;}
+  switchTab('intel');
+  addChatMessage('bot','## Pipeline Script Preview\n\n```bash\n'+(d.script||'')+'```');
+}
+
+// =====================================================================
+//  Init
+// =====================================================================
+async function init(){
+  await checkPrerequisites();
+  await loadConfig();
+  refreshHistory();
+}
+init();
+setInterval(()=>{
+  if(activeJobId) document.getElementById('hdr-status').textContent='● Scan running...';
+}, 5000);
 </script>
 </body>
 </html>"""
@@ -1799,6 +2086,22 @@ def api_stream():
 @app.route("/api/results")
 def api_results():
     return jsonify({"dirs": _discover_result_dirs()})
+
+
+@app.route("/api/wordlists")
+def api_wordlists():
+    """Return a list of wordlist files from the wordlists/ directory."""
+    wordlists_dir = ROOT_DIR / "wordlists"
+    result = []
+    if wordlists_dir.is_dir():
+        for f in sorted(wordlists_dir.iterdir()):
+            if f.is_file():
+                result.append({
+                    "name": f.name,
+                    "path": str(f),
+                    "size": f.stat().st_size,
+                })
+    return jsonify({"wordlists": result})
 
 
 @app.route("/api/summary")
@@ -2040,6 +2343,324 @@ def api_llm():
             api_key=api_key or None,
         )
         return jsonify({"response": response})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/config/get")
+def api_config_get():
+    """Read config.conf and return as JSON."""
+    config_path = ROOT_DIR / "config.conf"
+    result = {}
+    if config_path.exists():
+        for line in config_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, _, val = line.partition('=')
+                result[key.strip()] = val.strip().strip('"')
+    return jsonify(result)
+
+
+@app.route("/api/config/save", methods=["POST"])
+def api_config_save():
+    """Save config.conf from POSTed JSON key/value pairs."""
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({"error": "Expected JSON object"}), 400
+    config_path = ROOT_DIR / "config.conf"
+    # Read existing to preserve comments/structure
+    existing_lines = []
+    if config_path.exists():
+        existing_lines = config_path.read_text(encoding="utf-8").splitlines()
+    updated_keys = set()
+    new_lines = []
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#') and '=' in stripped:
+            key = stripped.split('=', 1)[0].strip()
+            if key in data:
+                new_lines.append(f'{key}="{data[key]}"')
+                updated_keys.add(key)
+                continue
+        new_lines.append(line)
+    # Append any new keys not in existing file
+    for key, val in data.items():
+        if key not in updated_keys:
+            new_lines.append(f'{key}="{val}"')
+    config_path.write_text('\n'.join(new_lines) + '\n', encoding="utf-8")
+    return jsonify({"saved": True})
+
+
+INSTALL_METHODS = {
+    "subfinder":    {"method": "go", "pkg": "github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"},
+    "assetfinder":  {"method": "go", "pkg": "github.com/tomnomnom/assetfinder@latest"},
+    "httpx":        {"method": "go", "pkg": "github.com/projectdiscovery/httpx/cmd/httpx@latest"},
+    "naabu":        {"method": "go", "pkg": "github.com/projectdiscovery/naabu/v2/cmd/naabu@latest"},
+    "nuclei":       {"method": "go", "pkg": "github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"},
+    "katana":       {"method": "go", "pkg": "github.com/projectdiscovery/katana/cmd/katana@latest"},
+    "gau":          {"method": "go", "pkg": "github.com/lc/gau/v2/cmd/gau@latest"},
+    "gospider":     {"method": "go", "pkg": "github.com/jaeles-project/gospider@latest"},
+    "puredns":      {"method": "go", "pkg": "github.com/d3mondev/puredns/v2@latest"},
+    "gotator":      {"method": "go", "pkg": "github.com/Josue87/gotator@latest"},
+    "goaltdns":     {"method": "go", "pkg": "github.com/subfinder/goaltdns@latest"},
+    "gf":           {"method": "go", "pkg": "github.com/tomnomnom/gf@latest"},
+    "ripgen":       {"method": "go", "pkg": "github.com/resyncgg/ripgen@latest"},
+    "getjs":        {"method": "go", "pkg": "github.com/003random/getJS@latest"},
+    "cariddi":      {"method": "go", "pkg": "github.com/edoardottt/cariddi/cmd/cariddi@latest"},
+    "subzy":        {"method": "go", "pkg": "github.com/PentestPad/subzy@latest"},
+    "waybackurls":  {"method": "go", "pkg": "github.com/tomnomnom/waybackurls@latest"},
+    "asnmap":       {"method": "go", "pkg": "github.com/projectdiscovery/asnmap/cmd/asnmap@latest"},
+    "chaos":        {"method": "go", "pkg": "github.com/projectdiscovery/chaos-client/cmd/chaos@latest"},
+    "findomain":    {"method": "go", "pkg": "github.com/findomain/findomain@latest"},
+    "dnsgen":       {"method": "pip", "pkg": "dnsgen", "cmd": "pip3 install dnsgen"},
+    "arjun":        {"method": "pip", "pkg": "arjun",  "cmd": "pip3 install arjun"},
+}
+
+
+@app.route("/api/tool/install", methods=["POST"])
+def api_tool_install():
+    """Install a single tool by name. Supports go install and pip3 install.
+
+    When check_only=true is passed, returns the install command and metadata
+    without executing anything — used by the frontend permission dialog.
+    """
+    import shutil
+    data = request.get_json()
+    tool = (data.get("tool") or "").strip()
+    check_only = bool(data.get("check_only", False))
+
+    if not tool:
+        return jsonify({"error": "tool name required"}), 400
+
+    info = INSTALL_METHODS.get(tool)
+    if not info:
+        return jsonify({"error": f"unknown tool: {tool}"}), 400
+
+    method = info["method"]
+
+    # Build the human-readable install command string for the permission dialog
+    if method == "go":
+        install_cmd = f"go install -v {info['pkg']}"
+        install_note = "Installs to ~/go/bin — ensure that directory is on your PATH."
+    elif method == "pip":
+        install_cmd = info.get("cmd", f"pip3 install {info['pkg']}")
+        install_note = "Installs as a system/user Python package via pip3."
+    else:
+        return jsonify({"error": f"unsupported install method: {method}"}), 400
+
+    if check_only:
+        # Just return metadata — do not execute anything
+        return jsonify({
+            "tool":         tool,
+            "method":       method,
+            "install_cmd":  install_cmd,
+            "note":         install_note,
+            "label":        tool,
+        })
+
+    # Validate prerequisites before launching
+    if method == "go":
+        # Search the enriched PATH so we find go even if not in default env
+        go_bin = os.path.expanduser("~/go/bin")
+        search_path = f"{go_bin}:{os.environ.get('PATH', '')}"
+        if not shutil.which("go", path=search_path):
+            return jsonify({"error": "Go is not installed — install Go first from https://go.dev/dl/"}), 400
+        cmd = ["go", "install", "-v", info["pkg"]]
+    elif method == "pip":
+        if not shutil.which("pip3"):
+            return jsonify({"error": "pip3 not found — install Python 3 and pip first"}), 400
+        cmd = info.get("cmd", f"pip3 install {info['pkg']}").split()
+
+    job = _create_and_start_job(
+        domain="install",
+        scan_type=f"install-tool-{tool}",
+        command=cmd,
+        options={},
+    )
+    return jsonify({"job_id": job.id, "status": "queued", "tool": tool})
+
+
+@app.route("/api/llm/analyze", methods=["POST"])
+def api_llm_analyze():
+    """LLM endpoint that injects latest scan results as context."""
+    data = request.get_json()
+    prompt = (data.get("prompt") or "").strip()
+    provider = data.get("provider", "local")
+    model = data.get("model", "")
+    api_key = data.get("api_key", "")
+    result_dir = data.get("result_dir", "")
+    action = data.get("action", "")  # 'report', 'summarize', 'prioritize', 'critical'
+
+    if not prompt and not action:
+        return jsonify({"error": "prompt or action required"}), 400
+
+    # Build context from results
+    context_parts = []
+    if result_dir:
+        try:
+            summary = _build_scan_summary(result_dir)
+            context_parts.append(f"## Scan Summary\nDomain: scan results\nSubdomains: {summary['subdomains']}\nLive hosts: {summary['live_hosts']}\nEndpoints: {summary['endpoints']}\nPorts scanned: {summary['ports']}\nVulnerabilities found: {json.dumps(summary['vulnerabilities'])}\nJS secrets: {summary['js_secrets']}")
+            # Add sample from key files
+            rd = ROOT_DIR / result_dir
+            for rel_path in ["subdomains/subs-alive.txt", "vulnerabilities/checkfor-xss.txt",
+                             "vulnerabilities/checkfor-sqli.txt", "vulnerabilities/nuclei-findings.txt",
+                             "vulnerabilities/takeover.csv", "js/js-secrets.txt"]:
+                fp = rd / rel_path
+                if fp.exists() and fp.stat().st_size > 0:
+                    sample = fp.read_text(errors="replace").splitlines()[:30]
+                    context_parts.append(f"\n### {rel_path} (first 30 lines)\n" + "\n".join(sample))
+        except Exception as e:
+            context_parts.append(f"[Error reading results: {e}]")
+
+    # Build action-specific prompt
+    action_prompts = {
+        "report": "Generate a comprehensive professional penetration testing / bug bounty report based on the scan results above. Include: Executive Summary, Scope, Methodology, Findings (with severity ratings), Recommendations, and Next Steps.",
+        "summarize": "Provide a concise executive summary of the reconnaissance findings. Focus on: total attack surface, most interesting subdomains, open ports, technology stack, and top 5 findings.",
+        "prioritize": "Prioritize the attack surface for manual testing. Which endpoints, parameters, or subdomains should be tested first for high-impact vulnerabilities? Explain your reasoning based on the data.",
+        "critical": "Identify the critical paths and highest-risk entry points from the scan data. What would an attacker target first? What are the most exploitable findings?",
+        "attack_chains": "Analyze the scan findings and identify multi-step attack chains. For each chain, describe: the entry point, exploitation steps, potential impact, and affected assets. Format as a numbered list of attack scenarios.",
+        "quick_wins":    "Identify the top 5 'quick win' findings from the scan data — vulnerabilities that are easy to verify/exploit with high impact. For each: finding type, affected URL/subdomain, why it's a quick win, and exact reproduction steps.",
+        "bb_report":     "Generate a structured bug bounty submission report based on the scan findings. Format it as a professional HackerOne/Bugcrowd submission with: Title, Severity (CVSS score), Summary, Steps to Reproduce (numbered), Impact, Supporting Evidence (URLs/payloads from findings), Recommended Fix, and References. Focus on the highest-severity confirmed findings.",
+    }
+
+    if action and action in action_prompts:
+        full_prompt = action_prompts[action]
+    else:
+        full_prompt = prompt
+
+    if context_parts:
+        full_prompt = "## Scan Results Context\n" + "\n".join(context_parts) + "\n\n---\n\n## Task\n" + full_prompt
+
+    try:
+        sys.path.insert(0, str(ROOT_DIR))
+        from rek import LLMAssistant
+        assistant = LLMAssistant(silent=True, timeout=120)
+        response = assistant.ask(
+            prompt=full_prompt,
+            provider=provider or None,
+            model=model or None,
+            api_key=api_key or None,
+        )
+        return jsonify({"response": response})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Custom Pipeline Builder
+# ---------------------------------------------------------------------------
+
+_TOOL_CMD_TEMPLATES = {
+    "subfinder":   "subfinder -d {D} -o {O}/subdomains.txt -silent -all {F}",
+    "assetfinder": "assetfinder --subs-only {D} {F} | tee -a {O}/subdomains.txt",
+    "findomain":   "findomain -t {D} -u {O}/findomain.txt {F}; cat {O}/findomain.txt >> {O}/subdomains.txt 2>/dev/null || true",
+    "puredns":     "puredns bruteforce wordlists/subdomains.txt {D} --write {O}/resolved.txt {F}; cat {O}/resolved.txt >> {O}/subdomains.txt 2>/dev/null || true",
+    "dnsgen":      "[ -f {O}/subdomains.txt ] && cat {O}/subdomains.txt | dnsgen - {F} > {O}/dnsgen.txt && cat {O}/dnsgen.txt >> {O}/subdomains.txt || true",
+    "gotator":     "[ -f {O}/subdomains.txt ] && gotator -sub {O}/subdomains.txt {F} -depth 1 -o {O}/gotator.txt && cat {O}/gotator.txt >> {O}/subdomains.txt || true",
+    "ripgen":      "[ -f {O}/subdomains.txt ] && ripgen -i {O}/subdomains.txt {F} > {O}/ripgen.txt && cat {O}/ripgen.txt >> {O}/subdomains.txt || true",
+    "asnmap":      "asnmap -d {D} -o {O}/asn-ips.txt {F}",
+    "httpx":       "[ -f {O}/subdomains.txt ] && httpx -l {O}/subdomains.txt -o {O}/hosts-alive.txt -silent -status-code -title -tech-detect {F} || httpx -u {D} -o {O}/hosts-alive.txt -silent {F}",
+    "naabu":       "[ -f {O}/hosts-alive.txt ] && naabu -list {O}/hosts-alive.txt -o {O}/ports.txt -silent {F}",
+    "subzy":       "[ -f {O}/subdomains.txt ] && subzy run --targets {O}/subdomains.txt --output {O}/subzy.txt {F}",
+    "gospider":    "[ -f {O}/hosts-alive.txt ] && gospider -S {O}/hosts-alive.txt -o {O}/gospider/ -c 10 -d 2 {F}",
+    "katana":      "[ -f {O}/hosts-alive.txt ] && katana -list {O}/hosts-alive.txt -o {O}/urls.txt -silent -d 3 {F}",
+    "gau":         "gau {D} {F} > {O}/gau-urls.txt",
+    "waybackurls": "waybackurls {D} {F} > {O}/wayback-urls.txt",
+    "gf-xss":      "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf xss {F} > {O}/gf-xss.txt || true",
+    "gf-sqli":     "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf sqli {F} > {O}/gf-sqli.txt || true",
+    "gf-ssrf":     "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf ssrf {F} > {O}/gf-ssrf.txt || true",
+    "gf-redirect": "[ -f {O}/urls.txt ] && cat {O}/urls.txt | gf redirect {F} > {O}/gf-redirect.txt || true",
+    "nuclei":      "[ -f {O}/hosts-alive.txt ] && nuclei -l {O}/hosts-alive.txt -o {O}/nuclei.txt -silent {F}",
+    "getjs":       "[ -f {O}/hosts-alive.txt ] && getJS --input {O}/hosts-alive.txt --output {O}/js-files.txt {F}",
+    "cariddi":     "[ -f {O}/hosts-alive.txt ] && cariddi -l {O}/hosts-alive.txt -s -o {O}/cariddi.txt {F}",
+    "py-cloud":    "python3 rek.py --cloud-recon -d {D} {F}",
+    "py-takeover": "[ -f {O}/subdomains.txt ] && python3 rek.py --takeover --input {O}/subdomains.txt {F}",
+    "py-headers":  "[ -f {O}/hosts-alive.txt ] && python3 rek.py --headers-audit --input {O}/hosts-alive.txt {F}",
+    "py-favicon":  "[ -f {O}/hosts-alive.txt ] && python3 rek.py --favicon-scan --input {O}/hosts-alive.txt {F}",
+    "py-params":   "[ -f {O}/hosts-alive.txt ] && python3 rek.py --param-discovery --input {O}/hosts-alive.txt {F}",
+    "py-github":   "python3 rek.py --github-dork -d {D} {F}",
+    "py-asn":      "python3 rek.py --asn-recon -d {D} {F}",
+    "py-aivuln":  "python3 rek_ai_scanner.py --input {O}/hosts-alive.txt --urls {O}/urls.txt --output {O}/ai-scan.csv {F}",
+    "py-osint":   "python3 rek_osint.py -d {D} --output-dir {O} {F}",
+    "py-triage":  "python3 rek_ai_triage.py --result-dir {O} --output {O}/triage-report.json {F}",
+}
+
+
+def _build_pipeline_script(domain: str, tools: List[dict], outdir: str) -> str:
+    """Generate a bash script for the custom pipeline."""
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        f'DOMAIN="{domain}"',
+        f'OUTDIR="{outdir}"',
+        'mkdir -p "$OUTDIR"',
+        f'echo "[REK] Custom pipeline for $DOMAIN"',
+        f'echo "[REK] Output: $OUTDIR"',
+        "",
+    ]
+    for step in tools:
+        tool_id = step.get("id", "")
+        flags = (step.get("flags") or "").strip()
+        tpl = _TOOL_CMD_TEMPLATES.get(tool_id)
+        if not tpl:
+            lines.append(f"echo '[REK] WARNING: unknown tool {tool_id}, skipping'")
+            continue
+        cmd = tpl.replace("{D}", "$DOMAIN").replace("{O}", "$OUTDIR").replace("{F}", flags)
+        lines.append(f'echo "[REK] Running: {tool_id}"')
+        lines.append(cmd)
+        lines.append("")
+    lines.append('echo "[REK] Pipeline complete."')
+    return "\n".join(lines) + "\n"
+
+
+@app.route("/api/scan/custom", methods=["POST"])
+def api_scan_custom():
+    data = request.get_json()
+    domain = (data.get("domain") or "").strip().lower()
+    tools = data.get("tools", [])
+    preview_only = bool(data.get("preview_only", False))
+
+    if not domain:
+        return jsonify({"error": "domain required"}), 400
+    if not tools:
+        return jsonify({"error": "tools list is empty"}), 400
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    result_dir = RESULTS_ROOT / f"custom-{domain.replace('.', '_')}-{ts}"
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    script_content = _build_pipeline_script(domain, tools, str(result_dir))
+
+    if preview_only:
+        return jsonify({"script": script_content})
+
+    script_path = result_dir / "pipeline.sh"
+    script_path.write_text(script_content, encoding="utf-8")
+    script_path.chmod(0o755)
+
+    job = _create_and_start_job(
+        domain=domain,
+        scan_type="custom-pipeline",
+        command=["bash", str(script_path)],
+        options={"tools": [t.get("id") for t in tools]},
+        result_dir=result_dir,
+    )
+    return jsonify({"job_id": job.id, "script": script_content})
+
+
+@app.route("/api/scan/stdin", methods=["POST"])
+def api_scan_stdin():
+    data = request.get_json()
+    job_id = (data.get("job_id") or "").strip()
+    text = data.get("text", "")
+    with _lock:
+        proc = _processes.get(job_id)
+    if not proc:
+        return jsonify({"error": "job not running"}), 404
+    try:
+        proc.stdin.write(text + "\n")
+        proc.stdin.flush()
+        return jsonify({"sent": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
