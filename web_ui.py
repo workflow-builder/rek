@@ -105,6 +105,7 @@ _jobs: Dict[str, Job] = {}
 _lock = threading.Lock()
 _sse_subscribers: Dict[str, list] = {}
 _processes: Dict[str, subprocess.Popen] = {}
+_ai_monitors: Dict[str, Any] = {}
 
 # ---------------------------------------------------------------------------
 # Prerequisite tool requirements per playbook
@@ -211,6 +212,173 @@ def _broadcast_sse(job_id: str, data: str, event: str = "log") -> None:
             dead.append(i)
     for i in reversed(dead):
         subs.pop(i)
+
+
+# ---------------------------------------------------------------------------
+# AI Monitor — LLM-driven scan output analysis and steering
+# ---------------------------------------------------------------------------
+
+class AIMonitor:
+    """
+    Monitors a running job's log output every 45 seconds.
+    Sends recent output to a local/remote LLM to detect stuck, slow, or
+    garbage output, then broadcasts the decision via SSE and optionally
+    takes action (skip tool, send stdin, etc.).
+    """
+
+    CHECK_INTERVAL = 45  # seconds between checks
+    LINES_TO_SAMPLE = 80
+
+    def __init__(self, job_id: str, log_path: str, provider: str = "local", model: str = ""):
+        self.job_id = job_id
+        self.log_path = log_path
+        self.provider = provider
+        self.model = model or "llama3.1"
+        self.active = True
+        self.decisions: list = []
+        self._last_line_count = 0
+        self._stall_count = 0
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self.active = False
+
+    def _recent_output(self) -> str:
+        try:
+            lines = Path(self.log_path).read_text(errors="replace").splitlines()
+            return "\n".join(lines[-self.LINES_TO_SAMPLE:])
+        except Exception:
+            return ""
+
+    def _current_line_count(self) -> int:
+        try:
+            return len(Path(self.log_path).read_text(errors="replace").splitlines())
+        except Exception:
+            return 0
+
+    def _call_llm(self, recent: str) -> dict:
+        prompt = (
+            "You are monitoring a live security reconnaissance scan. "
+            "Analyze the last output lines and classify if the scan is productive.\n\n"
+            f"SCAN OUTPUT (last {self.LINES_TO_SAMPLE} lines):\n{recent}\n\n"
+            "Respond ONLY with a single JSON object — no markdown, no explanation:\n"
+            '{"status":"productive|stuck|garbage|slow",'
+            '"action":"continue|skip_current|send_input",'
+            '"input_text":"optional text to send to stdin if action is send_input",'
+            '"reason":"brief explanation max 12 words",'
+            '"confidence":0.0}\n\n'
+            "Rules:\n"
+            "- garbage: connection refused loops, permission denied repeating, DNS NXDOMAIN spam\n"
+            "- stuck: exact same lines repeating, zero new findings for 50+ lines\n"
+            "- slow: progressing but very slowly (< 1 new result per 20 lines)\n"
+            "- productive: finding subdomains/URLs/vulns, making clear progress\n"
+            "- Only suggest skip_current if confidence >= 0.75\n"
+            "- confidence is 0.0 to 1.0"
+        )
+        try:
+            sys.path.insert(0, str(ROOT_DIR))
+            from rek import LLMAssistant  # type: ignore
+            assistant = LLMAssistant(silent=True, timeout=30)
+            raw = assistant.ask(prompt=prompt, provider=self.provider, model=self.model)
+            # Extract JSON from response
+            import re as _re
+            m = _re.search(r"\{[^{}]+\}", raw, _re.DOTALL)
+            if m:
+                result = json.loads(m.group())
+                result.setdefault("status", "unknown")
+                result.setdefault("action", "continue")
+                result.setdefault("reason", "")
+                result.setdefault("confidence", 0.0)
+                return result
+        except Exception:
+            pass
+        return {"status": "unknown", "action": "continue", "reason": "LLM unavailable", "confidence": 0.0}
+
+    def _execute_action(self, decision: dict) -> None:
+        action = decision.get("action", "continue")
+        confidence = float(decision.get("confidence", 0))
+        if confidence < 0.75:
+            return  # Not confident enough to act automatically
+
+        with _lock:
+            proc = _processes.get(self.job_id)
+
+        if action == "skip_current" and proc and proc.poll() is None:
+            # Try graceful quit first
+            try:
+                proc.stdin.write("q\n")
+                proc.stdin.flush()
+            except Exception:
+                pass
+            # Give the tool 3s to quit gracefully, then SIGTERM the process group
+            threading.Timer(3.0, self._force_skip, args=(proc,)).start()
+
+        elif action == "send_input":
+            text = (decision.get("input_text") or "").strip()
+            if text and proc and proc.poll() is None:
+                try:
+                    proc.stdin.write(text + "\n")
+                    proc.stdin.flush()
+                except Exception:
+                    pass
+
+    def _force_skip(self, proc: subprocess.Popen) -> None:
+        try:
+            if proc.poll() is None:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+    def _loop(self) -> None:
+        time.sleep(self.CHECK_INTERVAL)
+        while self.active:
+            with _lock:
+                job = _jobs.get(self.job_id)
+            if not job or job.status not in ("running", "queued"):
+                break
+
+            recent = self._recent_output()
+            if not recent.strip():
+                time.sleep(self.CHECK_INTERVAL)
+                continue
+
+            # Stall detection: if line count hasn't changed, increment stall counter
+            current_count = self._current_line_count()
+            if current_count == self._last_line_count:
+                self._stall_count += 1
+            else:
+                self._stall_count = 0
+            self._last_line_count = current_count
+
+            # If stalled for 2+ consecutive checks without LLM, force skip
+            if self._stall_count >= 2:
+                decision = {
+                    "status": "stuck",
+                    "action": "skip_current",
+                    "reason": "No new output for 90+ seconds",
+                    "confidence": 0.9,
+                    "timestamp": _now(),
+                }
+            else:
+                decision = self._call_llm(recent)
+                decision["timestamp"] = _now()
+
+            self.decisions.append(decision)
+            _broadcast_sse(self.job_id, json.dumps(decision), "ai_action")
+
+            if decision.get("action") != "continue":
+                self._execute_action(decision)
+                msg = f"[AI Monitor] {decision.get('status','?').upper()} — {decision.get('reason','')} → {decision.get('action','continue')} (confidence: {int(float(decision.get('confidence',0))*100)}%)"
+                _broadcast_sse(self.job_id, msg, "log")
+
+            time.sleep(self.CHECK_INTERVAL)
 
 
 def _run_job(job_id: str) -> None:
@@ -845,6 +1013,42 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .btn-yes:hover{background:#00ff8822}
 .btn-no{background:transparent;border-color:var(--red);color:var(--red)}
 .btn-no:hover{background:#ff444422}
+
+/* Console redesign */
+#console-main{display:flex;flex:1;overflow:hidden;min-height:0}
+#console-body{flex:1;overflow-y:auto;background:var(--terminal);padding:10px 12px;font-size:12px;line-height:1.6;min-width:0}
+#console-sidebar{width:260px;flex-shrink:0;border-left:1px solid var(--border);background:var(--bg2);overflow-y:auto;display:flex;flex-direction:column;gap:0}
+.sidebar-card{border-bottom:1px solid var(--border);padding:10px 12px}
+.sidebar-card h5{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:8px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:2px 0}
+.stat-label{font-size:10px;color:var(--text2)}
+.stat-value{font-size:12px;font-weight:700;color:var(--cyan)}
+.stat-value.red{color:var(--red)}
+.stat-value.orange{color:var(--orange)}
+.stat-value.yellow{color:var(--yellow)}
+.stat-value.green{color:var(--green)}
+.tool-elapsed{font-size:10px;color:var(--text3);margin-top:2px}
+#ai-status-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);display:inline-block;margin-right:5px;flex-shrink:0}
+#ai-status-dot.active{background:var(--green);animation:pulse-dot 2s infinite}
+#ai-status-dot.alert{background:var(--yellow);animation:pulse-dot 1s infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+.ai-decision-item{padding:5px 0;border-bottom:1px solid var(--border);font-size:10px;line-height:1.5}
+.ai-decision-item:last-child{border-bottom:none}
+.ai-decision-status{display:inline-block;padding:1px 5px;border-radius:2px;font-size:9px;font-weight:700;margin-right:4px}
+.ai-decision-status.productive{background:#00ff8822;color:var(--green)}
+.ai-decision-status.stuck{background:#ffd70022;color:var(--yellow)}
+.ai-decision-status.garbage{background:#ff444422;color:var(--red)}
+.ai-decision-status.slow{background:#ff8c0022;color:var(--orange)}
+.confidence-bar{height:3px;background:var(--border);border-radius:2px;margin-top:4px;overflow:hidden}
+.confidence-fill{height:100%;background:var(--cyan);transition:.3s}
+.ai-action-btns{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.ai-action-btn{padding:3px 8px;font-size:10px;border-radius:3px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--text2);font:inherit}
+.ai-action-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.ai-action-btn.skip{border-color:var(--yellow);color:var(--yellow)}
+.ai-action-btn.skip:hover{background:#ffd70011}
+/* Sidebar toggle for small screens */
+#sidebar-toggle{font-size:11px;padding:4px 8px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font:inherit}
+#sidebar-toggle:hover{border-color:var(--border2);color:var(--text)}
 </style>
 </head>
 <body>
@@ -910,17 +1114,56 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
     <select id="console-job-select" onchange="loadConsoleJob(this.value)">
       <option value="">— Select job —</option>
     </select>
-    <span id="console-label"></span>
+    <span id="console-label" style="font-size:11px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
     <div style="flex:1"></div>
     <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer">
       <input type="checkbox" id="autoScroll" checked> Auto-scroll
     </label>
+    <button id="ai-monitor-btn" class="btn btn-outline btn-sm" onclick="toggleAIMonitor()" title="AI scan steering — analyzes output and redirects stuck scans">
+      🤖 AI Monitor: OFF
+    </button>
     <button class="btn btn-outline btn-sm" onclick="clearConsole()">Clear</button>
+    <button id="sidebar-toggle" onclick="toggleSidebar()">◀ Stats</button>
   </div>
-  <div id="console-body"></div>
+  <div id="console-main">
+    <div id="console-body"></div>
+    <div id="console-sidebar">
+      <!-- Current Tool Card -->
+      <div class="sidebar-card" id="card-tool">
+        <h5>Current Tool</h5>
+        <div id="tool-name" style="font-size:12px;font-weight:600;color:var(--cyan)">Idle</div>
+        <div id="tool-elapsed" class="tool-elapsed">—</div>
+        <div class="stat-row" style="margin-top:4px">
+          <span class="stat-label">Lines out</span>
+          <span class="stat-value" id="stat-lines">0</span>
+        </div>
+      </div>
+      <!-- Live Findings Card -->
+      <div class="sidebar-card" id="card-findings">
+        <h5>Live Findings</h5>
+        <div class="stat-row"><span class="stat-label">Subdomains</span><span class="stat-value green" id="stat-subs">0</span></div>
+        <div class="stat-row"><span class="stat-label">Live Hosts</span><span class="stat-value green" id="stat-hosts">0</span></div>
+        <div class="stat-row"><span class="stat-label">URLs</span><span class="stat-value" id="stat-urls">0</span></div>
+        <div class="stat-row"><span class="stat-label">Critical</span><span class="stat-value red" id="stat-crit">0</span></div>
+        <div class="stat-row"><span class="stat-label">High</span><span class="stat-value orange" id="stat-high">0</span></div>
+        <div class="stat-row"><span class="stat-label">Medium</span><span class="stat-value yellow" id="stat-med">0</span></div>
+        <div class="stat-row"><span class="stat-label">Takeovers</span><span class="stat-value red" id="stat-takeover">0</span></div>
+      </div>
+      <!-- AI Monitor Card -->
+      <div class="sidebar-card" id="card-ai">
+        <h5><span id="ai-status-dot"></span>AI Monitor</h5>
+        <div id="ai-monitor-idle" style="font-size:10px;color:var(--text3);line-height:1.6">
+          Enable AI Monitor to have a local LLM watch the scan output, detect stuck or garbage output, and automatically redirect to the next phase.<br><br>
+          Configure LLM in the Intelligence tab first.
+        </div>
+        <div id="ai-decisions-list" style="display:none"></div>
+        <div id="ai-current-action" style="display:none" class="ai-action-btns"></div>
+      </div>
+    </div>
+  </div>
   <div id="stdin-row">
     <span id="stdin-prompt-label">⚡ Input required</span>
-    <input id="stdin-input" type="text" placeholder="Type your response...">
+    <input id="stdin-input" type="text" placeholder="Type your response..." onkeydown="if(event.key==='Enter')sendStdin()">
     <button class="btn-yn btn-yes" onclick="sendStdinText('y')">Y</button>
     <button class="btn-yn btn-no" onclick="sendStdinText('n')">N</button>
     <button class="btn btn-outline btn-sm" onclick="sendStdin()">Send</button>
@@ -1128,6 +1371,12 @@ let configData = {};
 let activeJobId = null;
 let consoleSource = null;
 let currentResultDir = null;
+
+// Scan stats & AI Monitor state
+let scanStats = {subdomains:0, liveHosts:0, urls:0, crit:0, high:0, med:0, takeover:0, lines:0, currentTool:null, toolStart:null};
+let aiMonitorEnabled = false;
+let sidebarVisible = true;
+let toolElapsedTimer = null;
 
 // Builder state
 let builderNodes = [];
@@ -1438,10 +1687,189 @@ function appendLine(text){
   div.textContent=text;
   body.appendChild(div);
   if(document.getElementById('autoScroll').checked) body.scrollTop=body.scrollHeight;
-  // Detect interactive prompts
-  const PROMPT_RE = /\[y\/n\]|\[Y\/N\]|\[yes\/no\]|\(y\/n\)|\(Y\/N\)|password:|Password:|Enter |press enter|continue\?|\? $/i;
-  if(PROMPT_RE.test(text) && activeJobId){
-    showStdinRow(text.trim().substring(0,80));
+
+  // Parse for stats
+  _parseLineForStats(text);
+
+  // Prompt detection
+  const PROMPT_RE=/\[y\/n\]|\[Y\/N\]|\[yes\/no\]|\(y\/n\)|\(Y\/N\)|password:|Password:|Enter |press enter|continue\?|\? $/i;
+  if(PROMPT_RE.test(text)&&activeJobId) showStdinRow(text.trim().substring(0,80));
+}
+
+function _parseLineForStats(line){
+  const l=line.toLowerCase();
+
+  // Detect current tool from phase markers
+  const toolMatch=line.match(/\[\+\]\s+(?:Running\s+)?([a-zA-Z0-9_-]+)[\s.]/);
+  if(toolMatch){
+    const t=toolMatch[1].toLowerCase();
+    const knownTools=['subfinder','assetfinder','httpx','naabu','nuclei','gospider','katana','gau','waybackurls','gf','subzy','puredns','dnsgen','getjs','cariddi','asnmap'];
+    if(knownTools.includes(t)){
+      scanStats.currentTool=t;
+      scanStats.toolStart=Date.now();
+      clearInterval(toolElapsedTimer);
+      toolElapsedTimer=setInterval(()=>{
+        if(scanStats.toolStart){
+          const e=Math.floor((Date.now()-scanStats.toolStart)/1000);
+          document.getElementById('tool-elapsed').textContent=`Running ${e}s`;
+        }
+      },1000);
+    }
+  }
+
+  // Subdomain found (various tool formats)
+  if(line.match(/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_.-]+\.[a-zA-Z]{2,}$/) ||
+     l.includes('found subdomain') || l.match(/\[\*\].*\.(com|io|net|org|dev|app)/)){
+    scanStats.subdomains++;
+  }
+
+  // Live host (httpx output: URL [status])
+  if(line.match(/https?:\/\/[^\s]+\s+\[2\d\d\]/)){
+    scanStats.liveHosts++;
+  }
+
+  // URL discovered
+  if(line.match(/https?:\/\/[^\s]{10,}/) && scanStats.currentTool &&
+     ['gospider','katana','gau','waybackurls'].includes(scanStats.currentTool)){
+    scanStats.urls++;
+  }
+
+  // Nuclei severity
+  if(l.includes('[critical]')) scanStats.crit++;
+  else if(l.includes('[high]')) scanStats.high++;
+  else if(l.includes('[medium]')) scanStats.med++;
+
+  // Takeover
+  if(l.includes('vulnerable') && (l.includes('takeover') || l.includes('cname'))) scanStats.takeover++;
+
+  scanStats.lines++;
+
+  if(scanStats.currentTool) document.getElementById('tool-name').textContent=scanStats.currentTool;
+  document.getElementById('stat-lines').textContent=scanStats.lines;
+  document.getElementById('stat-subs').textContent=scanStats.subdomains;
+  document.getElementById('stat-hosts').textContent=scanStats.liveHosts;
+  document.getElementById('stat-urls').textContent=scanStats.urls;
+  document.getElementById('stat-crit').textContent=scanStats.crit;
+  document.getElementById('stat-high').textContent=scanStats.high;
+  document.getElementById('stat-med').textContent=scanStats.med;
+  document.getElementById('stat-takeover').textContent=scanStats.takeover;
+}
+
+function resetScanStats(){
+  scanStats={subdomains:0,liveHosts:0,urls:0,crit:0,high:0,med:0,takeover:0,lines:0,currentTool:null,toolStart:null};
+  clearInterval(toolElapsedTimer);
+  document.getElementById('tool-name').textContent='Idle';
+  document.getElementById('tool-elapsed').textContent='—';
+  ['stat-lines','stat-subs','stat-hosts','stat-urls','stat-crit','stat-high','stat-med','stat-takeover'].forEach(id=>{
+    document.getElementById(id).textContent='0';
+  });
+}
+
+function toggleSidebar(){
+  sidebarVisible=!sidebarVisible;
+  const sb=document.getElementById('console-sidebar');
+  const btn=document.getElementById('sidebar-toggle');
+  sb.style.display=sidebarVisible?'flex':'none';
+  btn.textContent=sidebarVisible?'◀ Stats':'▶ Stats';
+}
+
+// =====================================================================
+//  AI Monitor — watches scan output, steers stuck/garbage scans
+// =====================================================================
+async function toggleAIMonitor(){
+  if(!activeJobId){toast('Start a scan first','err');return;}
+  aiMonitorEnabled=!aiMonitorEnabled;
+  const btn=document.getElementById('ai-monitor-btn');
+  const dot=document.getElementById('ai-status-dot');
+  const idleMsg=document.getElementById('ai-monitor-idle');
+  const decList=document.getElementById('ai-decisions-list');
+
+  if(aiMonitorEnabled){
+    // Get LLM settings from intel tab
+    const provider=document.getElementById('llm-provider').value||'local';
+    const model=document.getElementById('llm-model').value||'';
+    const r=await fetch('/api/ai/monitor',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({job_id:activeJobId,action:'start',provider,model})});
+    const d=await r.json();
+    if(d.error){toast(d.error,'err');aiMonitorEnabled=false;return;}
+    btn.textContent='🤖 AI Monitor: ON';
+    btn.style.borderColor='var(--green)';
+    btn.style.color='var(--green)';
+    dot.className='active';
+    idleMsg.style.display='none';
+    decList.style.display='block';
+    toast('AI Monitor started — analyzing output every 45s','ok');
+  } else {
+    if(activeJobId){
+      await fetch('/api/ai/monitor',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({job_id:activeJobId,action:'stop'})});
+    }
+    btn.textContent='🤖 AI Monitor: OFF';
+    btn.style.borderColor='';
+    btn.style.color='';
+    dot.className='';
+    idleMsg.style.display='block';
+    decList.style.display='none';
+    document.getElementById('ai-current-action').style.display='none';
+    toast('AI Monitor stopped','info');
+  }
+}
+
+function handleAIAction(eventData){
+  try{
+    const d=JSON.parse(eventData);
+    const dot=document.getElementById('ai-status-dot');
+    const decList=document.getElementById('ai-decisions-list');
+    const actionDiv=document.getElementById('ai-current-action');
+
+    // Update status dot
+    if(d.status==='productive') dot.className='active';
+    else if(d.status==='stuck'||d.status==='garbage') dot.className='alert';
+    else dot.className='active';
+
+    // Add to decision list
+    const confidence=Math.round((d.confidence||0)*100);
+    const item=document.createElement('div');
+    item.className='ai-decision-item';
+    item.innerHTML=`
+      <span class="ai-decision-status ${d.status||'unknown'}">${(d.status||'?').toUpperCase()}</span>
+      <span style="color:var(--text2)">${d.reason||''}</span>
+      <div class="confidence-bar"><div class="confidence-fill" style="width:${confidence}%"></div></div>
+    `;
+    decList.insertBefore(item,decList.firstChild);
+    if(decList.children.length>5) decList.removeChild(decList.lastChild);
+
+    // Show action buttons if AI suggests skipping
+    if(d.action&&d.action!=='continue'&&(d.confidence||0)>=0.6){
+      actionDiv.style.display='flex';
+      actionDiv.innerHTML=`
+        <span style="font-size:10px;color:var(--yellow);width:100%;margin-bottom:4px">AI suggests: ${d.action.replace(/_/g,' ')}</span>
+        <button class="ai-action-btn skip" onclick="skipCurrentTool()">⏭ Skip Tool</button>
+        <button class="ai-action-btn" onclick="document.getElementById('ai-current-action').style.display='none'">Ignore</button>
+      `;
+    }
+
+    // Also log in console
+    const statusColors={'productive':'success','stuck':'warn','garbage':'error','slow':'warn'};
+    const cls=statusColors[d.status]||'info';
+    const body=document.getElementById('console-body');
+    const div=document.createElement('div');
+    div.className=`line ${cls}`;
+    div.textContent=`[AI Monitor] ${(d.status||'').toUpperCase()} — ${d.reason||''} (confidence: ${confidence}%) → ${d.action||'continue'}`;
+    body.appendChild(div);
+    if(document.getElementById('autoScroll').checked) body.scrollTop=body.scrollHeight;
+  }catch(e){}
+}
+
+async function skipCurrentTool(){
+  if(!activeJobId){return;}
+  document.getElementById('ai-current-action').style.display='none';
+  const r=await fetch('/api/scan/skip',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({job_id:activeJobId})});
+  const d=await r.json();
+  if(d.skipped){
+    appendLine('[REK] ⏭ Skipping current tool — AI recommendation applied.');
+    toast('Tool skipped','ok');
   }
 }
 
@@ -1506,33 +1934,42 @@ async function loadConsoleJob(jobId){
 
 function streamJob(jobId){
   if(consoleSource){consoleSource.close();}
+  resetScanStats();
+  document.getElementById('tool-name').textContent='Starting...';
+  document.getElementById('stdin-row').classList.add('visible');
   consoleSource=new EventSource(`/api/stream?id=${jobId}`);
   consoleSource.addEventListener('log',e=>appendLine(e.data));
+  consoleSource.addEventListener('ai_action',e=>handleAIAction(e.data));
   consoleSource.addEventListener('status',e=>{
     try{
       const s=JSON.parse(e.data);
       const status=s.status||'?';
-      if(status==='running'){
-        showStdinRow('⚡ Input required');
-        hideStdinRow(); // show the row but keep it hidden until prompt detected
-      }
       if(status==='completed'){
         appendLine('[REK] ✓ Scan completed.');
         document.getElementById('hdr-status').textContent='● No active scan';
-        hideStdinRow();
-        checkPrerequisites(); // refresh tool status
+        document.getElementById('tool-name').textContent='Done';
+        clearInterval(toolElapsedTimer);
+        document.getElementById('tool-elapsed').textContent='Completed';
+        checkPrerequisites();
       } else if(status==='failed'){
         appendLine('[REK] ✗ Scan failed.');
         document.getElementById('hdr-status').textContent='● No active scan';
-        hideStdinRow();
+        document.getElementById('tool-name').textContent='Failed';
+        clearInterval(toolElapsedTimer);
       }
       if(['completed','failed'].includes(status)){
         consoleSource.close();
         refreshHistory();
+        hideStdinRow();
+        aiMonitorEnabled=false;
+        document.getElementById('ai-monitor-btn').textContent='🤖 AI Monitor: OFF';
+        document.getElementById('ai-monitor-btn').style.borderColor='';
+        document.getElementById('ai-monitor-btn').style.color='';
+        document.getElementById('ai-status-dot').className='';
       }
     }catch(err){}
   });
-  consoleSource.onerror=()=>{consoleSource.close();};
+  consoleSource.onerror=()=>{consoleSource.close();hideStdinRow();};
 }
 
 function watchJob(jobId, label, onDone){
@@ -2663,6 +3100,84 @@ def api_scan_stdin():
         return jsonify({"sent": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/monitor", methods=["POST"])
+def api_ai_monitor():
+    """Start, stop, or get status of AI monitor for a job."""
+    data = request.get_json()
+    job_id = (data.get("job_id") or "").strip()
+    action = data.get("action", "start")
+    provider = data.get("provider", "local")
+    model = data.get("model", "") or ""
+
+    with _lock:
+        job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "job not found"}), 404
+
+    if action == "start":
+        # Stop any existing monitor for this job
+        old = _ai_monitors.pop(job_id, None)
+        if old:
+            old.stop()
+        if job.status not in ("running",):
+            return jsonify({"error": "job is not currently running"}), 400
+        monitor = AIMonitor(job_id, job.log_path, provider=provider, model=model)
+        _ai_monitors[job_id] = monitor
+        monitor.start()
+        return jsonify({"started": True, "job_id": job_id})
+
+    elif action == "stop":
+        mon = _ai_monitors.pop(job_id, None)
+        if mon:
+            mon.stop()
+        return jsonify({"stopped": True})
+
+    elif action == "status":
+        mon = _ai_monitors.get(job_id)
+        if mon:
+            return jsonify({"active": mon.active, "decisions": mon.decisions[-5:]})
+        return jsonify({"active": False, "decisions": []})
+
+    return jsonify({"error": f"unknown action: {action}"}), 400
+
+
+@app.route("/api/scan/skip", methods=["POST"])
+def api_scan_skip():
+    """Manually skip the currently running tool in a job (sends SIGTERM to process group)."""
+    data = request.get_json()
+    job_id = (data.get("job_id") or "").strip()
+
+    with _lock:
+        proc = _processes.get(job_id)
+        job = _jobs.get(job_id)
+
+    if not proc or not job or job.status != "running":
+        return jsonify({"error": "job not running"}), 404
+
+    # Try graceful quit first
+    try:
+        proc.stdin.write("q\n")
+        proc.stdin.flush()
+    except Exception:
+        pass
+
+    # After 2s, kill process group so bash script continues to next command
+    def _do_skip():
+        time.sleep(2)
+        try:
+            if proc.poll() is None:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+    threading.Thread(target=_do_skip, daemon=True).start()
+    _broadcast_sse(job_id, "[REK] ⏭ Manual skip requested — terminating current tool.", "log")
+    return jsonify({"skipped": True})
 
 
 # ---------------------------------------------------------------------------
