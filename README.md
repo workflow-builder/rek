@@ -1,5 +1,6 @@
 
-# REK - Reconnaissance Toolkit (Cross-Platform Edition)
+# REK - Reconnaissance Toolkit
+(Cross-Platform Edition)
 
 **A Modern Recon Playbook for Bug Bounty Hunters**
 
@@ -44,7 +45,7 @@ The REK toolkit includes two main automated reconnaissance playbooks:
 - **[rek-playbook-v2.py](playbook/rek-playbook-v2.py)**: Enhanced URL crawler with better outcomes
 - **[rek-playbook.py](playbook/rek-playbook.py)**: Standard reconnaissance pipeline
 
-Note these are now Python scripts with the same functionality as the Shell scripts. If you are on a Unix system, you can use either the .sh or the .py versions. On Windows you must use the Python versions.
+Note these are now Python scripts with the same functionality as the Shell scripts. If you are on Linux, you can still use the .sh playbooks/install scripts, but you can use the .py playbooks/install scripts on either Windows or Linux.
 
 ### Quick Start with Playbooks
 
@@ -60,7 +61,7 @@ python3 rek.py
 ```
 
 The interactive mode provides:
-- Automatic dependency installation via `install-script.sh` or `install-script.py`
+- Automatic dependency installation via `install-script.py` or `install-script.sh`
 - Playbook version selection
 - Real-time output streaming
 - Error handling and validation
